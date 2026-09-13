@@ -74,6 +74,27 @@ public enum AppLocationCheck {
         untranslocatedBundleURL(for: bundleURL) ?? bundleURL.resolvingSymlinksInPath()
     }
 
+    public static func stripQuarantine(from url: URL) {
+        let quarantineProc = Process()
+        quarantineProc.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+        quarantineProc.arguments = ["-dr", "com.apple.quarantine", url.path]
+        try? quarantineProc.run()
+        quarantineProc.waitUntilExit()
+    }
+
+    public static func relaunch(at url: URL) -> Bool {
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, error in
+            if error == nil {
+                DispatchQueue.main.async {
+                    exit(0)
+                }
+            }
+        }
+        return false
+    }
+
     @MainActor
     @discardableResult
     public static func promptToMoveOutOfDownloadsIfNeeded() -> Bool {
@@ -86,14 +107,20 @@ public enum AppLocationCheck {
         let bundleURL = effectiveBundleURL()
         let approved = approvedInstallDirectories()
 
-        guard !isInApprovedLocation(bundleURL: bundleURL, approvedDirectories: approved) else {
+        // If running translocated from an approved location, strip quarantine and relaunch directly.
+        let isTranslocated = untranslocatedBundleURL(for: Bundle.main.bundleURL) != nil
+        if isInApprovedLocation(bundleURL: bundleURL, approvedDirectories: approved) {
+            if isTranslocated {
+                stripQuarantine(from: bundleURL)
+                return relaunch(at: bundleURL)
+            }
             return true
         }
 
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "Move Overland to Applications?"
-        alert.informativeText = "Running Overland from /Applications ensures reliable background privileged helper integration and permissions."
+        alert.informativeText = "Running Overland from Applications ensures reliable background privileged helper integration and permissions."
         alert.addButton(withTitle: "Move to Applications")
         alert.addButton(withTitle: "Continue Running Here")
 
@@ -108,30 +135,38 @@ public enum AppLocationCheck {
     @MainActor
     @discardableResult
     public static func moveToApplications(sourceURL: URL = effectiveBundleURL()) -> Bool {
-        let dest = URL(fileURLWithPath: "/Applications/Overland.app")
         let fm = FileManager.default
+        let systemDest = URL(fileURLWithPath: "/Applications/Overland.app")
+        let userDest = URL(fileURLWithPath: realUserHome(), isDirectory: true)
+            .appendingPathComponent("Applications/Overland.app")
 
-        // If source is already at destination, nothing to do
-        if sourceURL.standardizedFileURL.path == dest.standardizedFileURL.path {
+        // If source is already at destination, strip quarantine and ensure de-translocation
+        if sourceURL.standardizedFileURL.path == systemDest.standardizedFileURL.path ||
+           sourceURL.standardizedFileURL.path == userDest.standardizedFileURL.path {
+            stripQuarantine(from: sourceURL)
+            if untranslocatedBundleURL(for: Bundle.main.bundleURL) != nil {
+                return relaunch(at: sourceURL)
+            }
             return true
         }
 
-        do {
-            if fm.fileExists(atPath: dest.path) {
-                try fm.removeItem(at: dest)
-            }
-            try fm.copyItem(at: sourceURL, to: dest)
+        // Prefer /Applications if writable, otherwise ~/Applications
+        var target = systemDest
+        if !fm.isWritableFile(atPath: "/Applications") {
+            target = userDest
+            try? fm.createDirectory(at: userDest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        }
 
-            // Strip quarantine from destination so Gatekeeper does not translocate it
-            let quarantineProc = Process()
-            quarantineProc.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
-            quarantineProc.arguments = ["-dr", "com.apple.quarantine", dest.path]
-            try? quarantineProc.run()
-            quarantineProc.waitUntilExit()
+        do {
+            if fm.fileExists(atPath: target.path) {
+                try fm.removeItem(at: target)
+            }
+            try fm.copyItem(at: sourceURL, to: target)
+            stripQuarantine(from: target)
 
             let config = NSWorkspace.OpenConfiguration()
             config.activates = true
-            NSWorkspace.shared.openApplication(at: dest, configuration: config) { _, error in
+            NSWorkspace.shared.openApplication(at: target, configuration: config) { _, error in
                 if error == nil {
                     try? fm.removeItem(at: sourceURL)
                     DispatchQueue.main.async {
@@ -141,6 +176,26 @@ public enum AppLocationCheck {
             }
             return false
         } catch {
+            if target != userDest {
+                do {
+                    try? fm.createDirectory(at: userDest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    if fm.fileExists(atPath: userDest.path) {
+                        try fm.removeItem(at: userDest)
+                    }
+                    try fm.copyItem(at: sourceURL, to: userDest)
+                    stripQuarantine(from: userDest)
+
+                    let config = NSWorkspace.OpenConfiguration()
+                    config.activates = true
+                    NSWorkspace.shared.openApplication(at: userDest, configuration: config) { _, error in
+                        if error == nil {
+                            try? fm.removeItem(at: sourceURL)
+                            DispatchQueue.main.async { exit(0) }
+                        }
+                    }
+                    return false
+                } catch {}
+            }
             NSWorkspace.shared.activateFileViewerSelecting([sourceURL])
             NSWorkspace.shared.open(URL(fileURLWithPath: "/Applications"))
             return true

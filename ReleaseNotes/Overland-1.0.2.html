@@ -1,0 +1,11 @@
+<h2>Overland 1.0.2</h2>
+<p>Bug fixes and improvements for privileged helper detection and user-level Applications support.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Privileged Helper Status Detection:</strong> Fixed an issue where a fresh installation reported "Helper missing from the app bundle" because launchd returns a <code>notFound</code> status prior to initial registration. Overland now distinguishes uninstalled background daemons from missing binaries and displays the "Enable…" action.</li>
+  <li><strong>User Applications &amp; Auto-Detranslocation:</strong> Full support for running from <code>~/Applications</code> in addition to <code>/Applications</code>. When launched from an approved Applications directory under Gatekeeper App Translocation, Overland automatically clears quarantine attributes and relaunches un-translocated so helper registration succeeds reliably.</li>
+  <li><strong>Permission Fallback:</strong> If <code>/Applications</code> is not writable by the current user, Overland automatically relocates to <code>~/Applications</code>.</li>
+  <li><strong>Diagnostics &amp; Recovery:</strong> Added a manual "Re-check" button under Settings ▸ Privileged Helper to re-verify bundle integrity without restarting the app.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>

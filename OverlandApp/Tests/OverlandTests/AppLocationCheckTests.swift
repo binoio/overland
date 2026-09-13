@@ -59,4 +59,16 @@ final class AppLocationCheckTests: XCTestCase {
     func testUntranslocatedBundleURLIsNilForOrdinaryPath() {
         XCTAssertNil(AppLocationCheck.untranslocatedBundleURL(for: URL(fileURLWithPath: "/Applications/Overland.app")))
     }
+
+    func testStripQuarantineOnTemporaryFile() {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let tempFile = tempDir.appendingPathComponent("test.txt")
+        try? "test".data(using: .utf8)?.write(to: tempFile)
+
+        // Calling stripQuarantine should succeed cleanly without crashing
+        AppLocationCheck.stripQuarantine(from: tempFile)
+    }
 }

@@ -13,6 +13,19 @@ final class RealGpclientIntegrationTests: XCTestCase {
     override func setUpWithError() throws {
         gpclient = BinaryLocator().resolveGpclient(custom: ProcessInfo.processInfo.environment["GPCLIENT"])
         try XCTSkipIf(gpclient == nil, "gpclient not found; build it with Scripts/build_gpclient.sh")
+        if let path = gpclient {
+            let probe = Process()
+            probe.executableURL = URL(fileURLWithPath: path)
+            probe.arguments = ["--version"]
+            probe.standardOutput = Pipe()
+            probe.standardError = Pipe()
+            do {
+                try probe.run()
+                probe.waitUntilExit()
+            } catch {
+                throw XCTSkip("gpclient at \(path) cannot run on this platform: \(error)")
+            }
+        }
         // gpclient refuses to start while another instance holds its lock, so a
         // live VPN session on this machine would turn every run into a failure.
         try XCTSkipIf(Self.anotherGpclientIsRunning(), "a gpclient tunnel is running on this machine")

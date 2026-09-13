@@ -298,8 +298,11 @@ struct HelperStatusRow: View {
                     Button("Uninstall…") { confirmingUninstall = true }
                         .controlSize(.small)
                         .disabled(uninstalling)
-                case .unsignedBuild, .notFound:
+                case .unsignedBuild:
                     EmptyView()
+                case .notFound:
+                    Button("Re-check") { manager.refresh() }
+                        .controlSize(.small)
                 }
             }
             if let error = manager.lastError {

@@ -39,7 +39,7 @@ struct SetupView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     } else if helper.status == .requiresMoveToApplications {
-                        Text("Overland is currently running outside /Applications. Move the app to /Applications to allow macOS to authorize and register the privileged helper.")
+                        Text("Overland is currently running outside Applications. Move the app to Applications to allow macOS to authorize and register the privileged helper.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

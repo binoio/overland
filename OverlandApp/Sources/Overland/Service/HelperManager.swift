@@ -27,7 +27,7 @@ public final class HelperManager: ObservableObject {
             case .notRegistered: return "Not enabled"
             case .requiresApproval: return "Waiting for approval in System Settings › Login Items & Extensions"
             case .enabled: return "Enabled"
-            case .requiresMoveToApplications: return "Move Overland to /Applications to enable the helper"
+            case .requiresMoveToApplications: return "Move Overland to Applications to enable the helper"
             case .notFound: return "Helper missing from the app bundle"
             }
         }
@@ -102,37 +102,42 @@ public final class HelperManager: ObservableObject {
         }
     }
 
-    public func refresh() {
-        let plist = bundleURL.appendingPathComponent("Contents/Library/LaunchDaemons/\(overlandHelperPlistName)")
-        let helper = bundleURL.appendingPathComponent("Contents/MacOS/OverlandHelper")
-        let fm = FileManager.default
-        if !fm.fileExists(atPath: plist.path) || !fm.isExecutableFile(atPath: helper.path) {
-            status = .notFound
-        } else if Self.bundleTeamIdentifier() == nil {
-            status = .unsignedBuild
+    nonisolated public static func resolveStatus(
+        filesExist: Bool,
+        teamIdentifier: String?,
+        inApprovedLocation: Bool,
+        serviceStatus: SMAppService.Status
+    ) -> Status {
+        if !filesExist {
+            return .notFound
+        } else if teamIdentifier == nil {
+            return .unsignedBuild
         } else {
-            let effectiveURL = AppLocationCheck.effectiveBundleURL(for: bundleURL)
-            let approved = AppLocationCheck.approvedInstallDirectories()
-            let inApprovedLocation = AppLocationCheck.isInApprovedLocation(bundleURL: effectiveURL, approvedDirectories: approved)
-
-            switch service.status {
-            case .enabled: status = .enabled
-            case .requiresApproval: status = .requiresApproval
-            case .notRegistered:
-                if !inApprovedLocation {
-                    status = .requiresMoveToApplications
-                } else {
-                    status = .notRegistered
-                }
-            case .notFound:
-                if !inApprovedLocation {
-                    status = .requiresMoveToApplications
-                } else {
-                    status = .notFound
-                }
-            @unknown default: status = .notRegistered
+            switch serviceStatus {
+            case .enabled: return .enabled
+            case .requiresApproval: return .requiresApproval
+            case .notRegistered, .notFound:
+                return inApprovedLocation ? .notRegistered : .requiresMoveToApplications
+            @unknown default: return .notRegistered
             }
         }
+    }
+
+    public func refresh() {
+        let effectiveURL = AppLocationCheck.effectiveBundleURL(for: bundleURL)
+        let plist = effectiveURL.appendingPathComponent("Contents/Library/LaunchDaemons/\(overlandHelperPlistName)")
+        let helper = effectiveURL.appendingPathComponent("Contents/MacOS/OverlandHelper")
+        let fm = FileManager.default
+        let filesExist = fm.fileExists(atPath: plist.path) && fm.isExecutableFile(atPath: helper.path)
+        let approved = AppLocationCheck.approvedInstallDirectories()
+        let inApprovedLocation = AppLocationCheck.isInApprovedLocation(bundleURL: effectiveURL, approvedDirectories: approved)
+
+        status = Self.resolveStatus(
+            filesExist: filesExist,
+            teamIdentifier: Self.bundleTeamIdentifier(),
+            inApprovedLocation: inApprovedLocation,
+            serviceStatus: service.status
+        )
         availability.enabled = status == .enabled
     }
 
