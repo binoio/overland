@@ -1,9 +1,14 @@
-# Overland
+# Overland — developer guide
 
-Overland is a native SwiftUI/AppKit macOS client for GlobalProtect VPN portals. It drives the
-[`gpclient`](../apps/gpclient) CLI from this repository. It gives the CLI a
-menu bar item, a connection window, gateway selection, live tunnel metrics and
-a log console — without a Tauri/WebKit runtime.
+This is the engineering README for the app under `OverlandApp/`; the
+project overview, install steps and the relationship to
+GlobalProtect-openconnect are in the [top-level README](../README.md).
+
+Overland is a native SwiftUI/AppKit macOS client for GlobalProtect VPN portals.
+It drives the [`gpclient`](../apps/gpclient) and [`gpauth`](../apps/gpauth)
+CLIs built from this repository, giving them a menu bar item, a connection
+window, gateway selection, live tunnel metrics and a log console — without a
+Tauri/WebKit runtime.
 
 ## How it works
 

@@ -1,0 +1,20 @@
+title: "Overland"
+description: "A native macOS client for GlobalProtect VPN portals, built on gpclient from GlobalProtect-openconnect."
+url: "https://bino.io"
+baseurl: "/overland"
+
+markdown: kramdown
+highlighter: rouge
+theme: minima
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+exclude:
+  - bsd-source-build.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor/
+  - .bundle/
+  - .sass-cache/
+  - .jekyll-cache/
