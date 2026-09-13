@@ -3,6 +3,26 @@
     <channel>
         <title>Overland</title>
         <item>
+            <title>1.0.1</title>
+            <pubDate>Sun, 13 Sep 2026 13:45:01 -0400</pubDate>
+            <sparkle:version>1.0.1</sparkle:version>
+            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Overland 1.0.1</h2>
+<p>Bug fixes and enhancements for the privileged helper installation and testing tooling.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Privileged Helper &amp; Release Packaging Fix:</strong> Fixed an issue where release archives contained AppleDouble metadata files (<code>._*</code>) that invalidated code signatures upon extraction, causing the app to report "Helper missing from the app bundle".</li>
+  <li><strong>App Translocation &amp; Move Prompt:</strong> Enhanced app location detection to recognize Gatekeeper App Translocation when launched from Downloads or temporary folders. Overland now reliably prompts to relocate itself to <code>/Applications</code> so background helper authorization persists.</li>
+  <li><strong>HIP Simulation &amp; Testing:</strong> Added an option under Settings ▸ Network to simulate and automatically rotate client host identity (computer name, rotating MAC address/Host ID, and IP address) per connection attempt for testing without modifying upstream binaries.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> for seamless privileged helper registration.</p>
+]]></description>
+            <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.1/Overland-1.0.1.zip" length="14986904" type="application/octet-stream" sparkle:edSignature="eK3zPaYfv1r3oYwbQyPnaGgrxrYwJwOVlmL7dEUo9kkUCof+udGG6oDMkFXna1EKCb8eEdUmG1+FSdmdIxrQDQ=="/>
+        </item>
+        <item>
             <title>1.0.0</title>
             <pubDate>Sun, 13 Sep 2026 13:06:44 -0400</pubDate>
             <sparkle:version>1.0.0</sparkle:version>
