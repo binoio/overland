@@ -1,0 +1,29 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Overland</title>
+        <item>
+            <title>1.0.0</title>
+            <pubDate>Sun, 13 Sep 2026 13:06:44 -0400</pubDate>
+            <sparkle:version>1.0.0</sparkle:version>
+            <sparkle:shortVersionString>1.0.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Overland 1.0.0</h2>
+<p>The first release: a native macOS client for GlobalProtect VPN portals, built on gpclient and gpauth from GlobalProtect-openconnect.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Single Sign-On</strong> in your own browser, with password and client-certificate logins as alternatives.</li>
+  <li><strong>Approve once, never prompt again.</strong> A privileged helper inside the app (launchd + SMAppService, approved once in System Settings) opens the tunnel; unsigned builds fall back to the standard administrator dialog.</li>
+  <li><strong>Menu bar first.</strong> Status, Connect/Disconnect, Activity Logs, Settings and Quit as a standard menu; optional menu-bar-only mode.</li>
+  <li><strong>Live session view</strong> with gateway, session expiry, tunnel address and throughput sparklines; a searchable activity log.</li>
+  <li><strong>Robust lifecycle.</strong> Quit disconnects cleanly; after a crash, Overland re-attaches to the running tunnel.</li>
+  <li><strong>Gateway discovery</strong> from the portal, manual gateways, and per-connection tunnel options.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Move Overland to /Applications so the helper's approval sticks.</p>
+]]></description>
+            <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.0/Overland-1.0.0.zip" length="14948197" type="application/octet-stream" sparkle:edSignature="EPs9a/l/SsXh7Wo/SUWDzP16QfqWI1oyUzBxLv2xH7zQx3KKpVlKFsV8q2yYXEKzKO2RH1yrgOl9J+ut+2INBw=="/>
+        </item>
+    </channel>
+</rss>
