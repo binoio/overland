@@ -8,6 +8,14 @@ A modern GlobalProtect VPN client for Linux, built on OpenConnect with full supp
 
 > **Inspired by** [gp-saml-gui](https://github.com/dlenski/gp-saml-gui)
 
+## macOS app
+
+A native SwiftUI menu bar/window client that drives `gpclient` lives in
+[`GlobalProtectApp/`](GlobalProtectApp/README.md). Build gpclient for macOS
+with `zsh GlobalProtectApp/Scripts/build_gpclient.sh`, then
+`zsh GlobalProtectApp/Scripts/bundle.sh` to produce a self-contained
+`dist/GlobalProtect.app`.
+
 ## Table of Contents
 
 - [Features](#features)

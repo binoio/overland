@@ -16,3 +16,6 @@ gen
 
 # Nix files
 result
+
+# macOS app bundle output (GlobalProtectApp/Scripts/bundle.sh)
+/dist

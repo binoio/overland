@@ -269,6 +269,11 @@ fn parse_portal_config(server: &str, cred: &Credential, root: Element) -> anyhow
     gateways.push(Gateway::new(server.to_string(), server.to_string()));
   } else {
     info!("Found {} gateways in portal config", gateways.len());
+    // One line per gateway so a non-interactive consumer (a GUI reading the
+    // JSON log stream) can offer the same choice the terminal picker does.
+    for line in gateway_inventory_lines(&gateways) {
+      info!("{line}");
+    }
   }
 
   let version = root.descendant_text("version").map(|s| s.to_string());
@@ -346,6 +351,24 @@ fn internal_host_detect(element: &Element) -> bool {
   }
 
   false
+}
+
+/// Render each gateway as `Gateway: <name> (<address>) priority=<n>`.
+///
+/// The shape is deliberately stable and greppable: it is part of the
+/// machine-readable surface exposed through `--log-format json`.
+pub fn gateway_inventory_lines(gateways: &[Gateway]) -> Vec<String> {
+  gateways
+    .iter()
+    .map(|gateway| {
+      format!(
+        "Gateway: {} ({}) priority={}",
+        gateway.name(),
+        gateway.server(),
+        gateway.priority
+      )
+    })
+    .collect()
 }
 
 #[cfg(test)]
@@ -436,5 +459,41 @@ mod tests {
     assert_eq!(config.auth_cookie().user_auth_cookie(), "user-cookie");
     assert_eq!(config.auth_cookie().prelogon_user_auth_cookie(), "prelogon-cookie");
     assert_eq!(config.gateways().len(), 1);
+  }
+
+  /// The inventory line is a contract with headless consumers: name, address
+  /// and priority in one fixed shape per gateway.
+  #[test]
+  fn renders_one_inventory_line_per_gateway() {
+    let root = parse_xml(
+      r#"<policy>
+        <gateways>
+          <external>
+            <list>
+              <entry name="us1.vpn.example.com">
+                <description>US East</description>
+                <priority>1</priority>
+              </entry>
+              <entry name="eu1.vpn.example.com">
+                <description>EU Central</description>
+                <priority>2</priority>
+              </entry>
+            </list>
+          </external>
+        </gateways>
+      </policy>"#,
+    );
+    let cred = Credential::from(crate::credential::PasswordCredential::new("alice", "secret"));
+    let config = parse_portal_config("vpn.example.com", &cred, root).unwrap();
+
+    let lines = gateway_inventory_lines(&config.gateways);
+
+    assert_eq!(
+      lines,
+      vec![
+        "Gateway: US East (us1.vpn.example.com) priority=1",
+        "Gateway: EU Central (eu1.vpn.example.com) priority=2",
+      ]
+    );
   }
 }
