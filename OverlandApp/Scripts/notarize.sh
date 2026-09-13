@@ -16,7 +16,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP_DIR="${REPO_ROOT}/OverlandApp"
 APP="${REPO_ROOT}/dist/Overland.app"
 ENTITLEMENTS="${APP_DIR}/Support/Overland.entitlements"
-IDENTITY="${OVERLAND_SIGN_IDENTITY:-}"
+IDENTITY="${OVERLAND_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"
 NOTARY_PROFILE="${OVERLAND_NOTARY_PROFILE:-overland-notary}"
 
 [[ -d "$APP" ]] || { echo "error: ${APP} missing; run Scripts/bundle.sh first" >&2; exit 1; }
@@ -35,6 +35,7 @@ for helper in gpclient gpauth overland-exec; do
         codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}/Contents/MacOS/${helper}"
     fi
 done
+codesign --force --options runtime --timestamp --sign "$IDENTITY" --entitlements "${APP_DIR}/Support/OverlandHelper.entitlements" "${APP}/Contents/MacOS/OverlandHelper"
 codesign --force --options runtime --timestamp --sign "$IDENTITY" --entitlements "$ENTITLEMENTS" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 

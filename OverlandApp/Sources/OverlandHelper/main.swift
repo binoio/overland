@@ -26,8 +26,10 @@ final class Daemon: @unchecked Sendable {
     let binaryRequirement: SecRequirement
 
     init() throws {
-        // The helper lives at <App>.app/Contents/MacOS/OverlandHelper.
-        let helperURL = URL(fileURLWithPath: Swift.CommandLine.arguments[0]).resolvingSymlinksInPath()
+        // The helper lives at <App>.app/Contents/MacOS/OverlandHelper. launchd
+        // passes a bundle-relative argv[0], so ask the runtime for the real
+        // executable path; the validator canonicalizes when comparing.
+        let helperURL = (Bundle.main.executableURL ?? URL(fileURLWithPath: Swift.CommandLine.arguments[0])).standardizedFileURL
         let macOSDir = helperURL.deletingLastPathComponent()
         bundleURL = macOSDir.deletingLastPathComponent().deletingLastPathComponent()
         gpclientPath = macOSDir.appendingPathComponent("gpclient").path
@@ -39,7 +41,7 @@ final class Daemon: @unchecked Sendable {
     }
 
     func run() -> Never {
-        logger.info("starting; team \(self.teamID, privacy: .public), bundle \(self.bundleURL.path, privacy: .public)")
+        logger.info("starting; team \(self.teamID, privacy: .public), bundle \(self.bundleURL.path, privacy: .public), gpclient \(self.gpclientPath, privacy: .public)")
 
         let validator = HelperRequestValidator(gpclientPath: gpclientPath, vpncScriptPath: vpncScriptPath)
         let manager = TunnelManager(validator: validator, runnerFactory: { [self] in

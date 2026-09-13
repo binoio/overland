@@ -9,6 +9,9 @@
 #   GPAUTH=/path/to/gpauth           override the gpauth binary to embed (SAML logins)
 #   VPNC_SCRIPT=/path/to/vpnc-script override the vpnc-script to embed
 #   APP_VERSION=x.y.z                override the version stamped into Info.plist
+#   OVERLAND_SIGN_IDENTITY="…"       Developer ID Application identity to sign with
+#                                    (default: the first one in the keychain; ad-hoc if none).
+#                                    The privileged helper only works in a Developer ID-signed build.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -28,17 +31,22 @@ cd "$REPO_ROOT"
 echo "==> Building Overland (release)"
 xcrun swift build -c release --package-path "$APP_DIR" --product Overland
 xcrun swift build -c release --package-path "$APP_DIR" --product overland-exec
+xcrun swift build -c release --package-path "$APP_DIR" --product OverlandHelper
 BIN_PATH="$(xcrun swift build -c release --package-path "$APP_DIR" --show-bin-path)"
 
 echo "==> Assembling bundle at ${APP_BUNDLE}"
 rm -rf "$APP_BUNDLE"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR" "${CONTENTS}/Library/LaunchDaemons"
 
 cp "${BIN_PATH}/Overland" "${MACOS_DIR}/Overland"
 chmod +x "${MACOS_DIR}/Overland"
 # Signal-reset exec shim used by the privileged wrapper (see Sources/overland-exec).
 cp "${BIN_PATH}/overland-exec" "${MACOS_DIR}/overland-exec"
 chmod +x "${MACOS_DIR}/overland-exec"
+# Privileged helper daemon + its launchd plist (registered via SMAppService).
+cp "${BIN_PATH}/OverlandHelper" "${MACOS_DIR}/OverlandHelper"
+chmod +x "${MACOS_DIR}/OverlandHelper"
+cp "${APP_DIR}/Support/io.bino.overland.helper.plist" "${CONTENTS}/Library/LaunchDaemons/io.bino.overland.helper.plist"
 
 # SwiftPM resource bundle (icon etc.) plus a flat copy of the icon for CFBundleIconFile.
 if [[ -d "${BIN_PATH}/Overland_Overland.bundle" ]]; then
@@ -141,8 +149,31 @@ if (( ! SKIP_GPCLIENT )); then
     fi
 fi
 
-# Ad-hoc sign the whole bundle so Gatekeeper/TCC treat it as a stable identity
-# during local runs. notarize.sh replaces this with a Developer ID signature.
-codesign --force --deep --sign - --entitlements "${APP_DIR}/Support/Overland.entitlements" "$APP_BUNDLE" >/dev/null
+# ---------------------------------------------------------------------------
+# Signing. A Developer ID signature (same Team ID on the app and the helper)
+# is what lets SMAppService register the privileged helper; without one the
+# bundle is ad-hoc signed and the app falls back to the administrator dialog.
+# Signed inside-out; never --deep for the final pass.
+# ---------------------------------------------------------------------------
+IDENTITY="${OVERLAND_SIGN_IDENTITY:-}"
+if [[ -z "$IDENTITY" ]]; then
+    IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
+fi
+
+if [[ -n "$IDENTITY" ]]; then
+    echo "==> Signing with: ${IDENTITY}"
+    SIGN=(codesign --force --options runtime --timestamp --sign "$IDENTITY")
+    for lib in "${FRAMEWORKS_DIR}"/*.dylib(N); do "${SIGN[@]}" "$lib" >/dev/null; done
+    for helper in gpclient gpauth overland-exec; do
+        [[ -x "${MACOS_DIR}/${helper}" ]] && "${SIGN[@]}" "${MACOS_DIR}/${helper}" >/dev/null
+    done
+    "${SIGN[@]}" --entitlements "${APP_DIR}/Support/OverlandHelper.entitlements" "${MACOS_DIR}/OverlandHelper" >/dev/null
+    "${SIGN[@]}" --entitlements "${APP_DIR}/Support/Overland.entitlements" "$APP_BUNDLE" >/dev/null
+    codesign --verify --deep --strict "$APP_BUNDLE"
+    echo "    Team ID: $(codesign -dv "$APP_BUNDLE" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+else
+    echo "==> No Developer ID identity found; ad-hoc signing (privileged helper unavailable, admin dialog is used)"
+    codesign --force --deep --sign - --entitlements "${APP_DIR}/Support/Overland.entitlements" "$APP_BUNDLE" >/dev/null
+fi
 
 echo "✓ ${APP_BUNDLE} (version ${VERSION})"

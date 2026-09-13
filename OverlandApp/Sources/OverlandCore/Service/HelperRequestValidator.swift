@@ -80,8 +80,14 @@ public struct HelperRequestValidator: Sendable {
 
     private static let hostnamePattern = try! NSRegularExpression(pattern: #"^[A-Za-z0-9]([A-Za-z0-9.-]{0,252}[A-Za-z0-9])?(:\d{1,5})?$"#)
 
+    /// Resolve symlinks and firmlinks (`/Applications` is one on APFS) so the
+    /// same file always compares equal however it was spelled.
+    public static func canonical(_ path: String) -> String {
+        URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
     public func validate(executable: String, arguments: [String], callerUID: UInt32) throws -> Approved {
-        guard executable == gpclientPath else { throw Rejection.wrongExecutable(executable) }
+        guard Self.canonical(executable) == Self.canonical(gpclientPath) else { throw Rejection.wrongExecutable(executable) }
 
         var globals: [String] = []
         var index = 0
@@ -153,7 +159,7 @@ public struct HelperRequestValidator: Sendable {
         case "--mtu", "--force-dpd", "--reconnect-timeout":
             guard UInt32(value) != nil else { throw Rejection.badNumber(flag, value) }
         case "--script":
-            guard value == vpncScriptPath else { throw Rejection.scriptNotBundled(value) }
+            guard Self.canonical(value) == Self.canonical(vpncScriptPath) else { throw Rejection.scriptNotBundled(value) }
         case "--certificate", "--sslkey":
             guard let info = fileInfo(value), info.isRegularFile else { throw Rejection.fileNotReadable(value) }
             guard info.ownerUID == callerUID else { throw Rejection.fileNotOwnedByCaller(value) }

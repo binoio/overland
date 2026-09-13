@@ -9,12 +9,20 @@ struct OverlandApp: App {
     @Environment(\.openWindow) private var openWindow
 
     init() {
+        // `Overland --helper-status`: print the privileged helper's registration
+        // state and exit. Handy when System Settings and the app disagree.
+        if ProcessInfo.processInfo.arguments.contains("--helper-status") {
+            HelperManager.printDiagnostics()
+            exit(0)
+        }
         _ = AppLocationCheck.promptToMoveOutOfDownloadsIfNeeded()
     }
 
     var body: some Scene {
         // Main Application Window
-        WindowGroup(id: "main") {
+        // A single window: WindowGroup would open another one every time the
+        // browser hands the globalprotectcallback: URL back to the app.
+        Window("Overland", id: "main") {
             ContentView(viewModel: viewModel)
         }
         .windowStyle(.automatic)

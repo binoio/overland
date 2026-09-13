@@ -6,9 +6,6 @@ public struct SessionTimerView: View {
     public let allowExtend: Bool
     public let onExtend: () -> Void
 
-    @State private var remainingTime: String = "--:--"
-    @State private var timer: Timer?
-
     public init(expiresAt: Date?, allowExtend: Bool = false, onExtend: @escaping () -> Void = {}) {
         self.expiresAt = expiresAt
         self.allowExtend = allowExtend
@@ -16,57 +13,46 @@ public struct SessionTimerView: View {
     }
 
     public var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "timer")
-                .foregroundStyle(.secondary)
+        // TimelineView re-evaluates with the current `expiresAt` on every tick,
+        // unlike a Timer closure, which would capture the value at creation.
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 8) {
+                Image(systemName: "timer")
+                    .foregroundStyle(.secondary)
 
-            Text(expiresAt == nil ? "Session lifetime not reported" : "Expires in: \(remainingTime)")
-                .font(.system(size: 13, weight: .medium, design: .monospaced))
+                Text(label(at: context.date))
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
 
-            if allowExtend {
-                Button(action: onExtend) {
-                    Text("Extend")
-                        .font(.caption)
+                if allowExtend {
+                    Button(action: onExtend) {
+                        Text("Extend")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.mini)
             }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color(NSColor.quaternaryLabelColor).opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onAppear {
-            updateRemaining()
-            timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                updateRemaining()
-            }
-        }
-        .onDisappear {
-            timer?.invalidate()
-            timer = nil
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color(NSColor.quaternaryLabelColor).opacity(0.15))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
     }
 
-    private func updateRemaining() {
-        guard let expiresAt = expiresAt else {
-            remainingTime = "–"
-            return
-        }
+    private func label(at now: Date) -> String {
+        guard let expiresAt else { return "Session lifetime not reported" }
+        return "Expires in: \(Self.format(expiresAt.timeIntervalSince(now)))"
+    }
 
-        let diff = expiresAt.timeIntervalSince(Date())
-        guard diff > 0 else {
-            remainingTime = "Expired"
-            return
-        }
-
-        let hours = Int(diff) / 3600
-        let minutes = (Int(diff) % 3600) / 60
-        let seconds = Int(diff) % 60
+    static func format(_ remaining: TimeInterval) -> String {
+        guard remaining > 0 else { return "Expired" }
+        let total = Int(remaining)
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
         if hours > 0 {
-            remainingTime = String(format: "%02d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            remainingTime = String(format: "%02d:%02d", minutes, seconds)
+            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
         }
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }

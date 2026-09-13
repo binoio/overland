@@ -151,6 +151,8 @@ public struct SettingsView: View {
                 Text(privilegeHelp)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+
+                helperStatusRow
             }
 
             Section {
@@ -159,6 +161,10 @@ public struct SettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear { viewModel.refreshResolvedPaths() }
+    }
+
+    private var helperStatusRow: some View {
+        HelperStatusRow(manager: viewModel.helperManager)
     }
 
     private var privilegeHelp: String {
@@ -212,5 +218,44 @@ public struct SettingsView: View {
         panel.allowsMultipleSelection = false
         panel.showsHiddenFiles = true
         return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+}
+
+/// Observes the helper manager directly so status changes re-render.
+struct HelperStatusRow: View {
+    @ObservedObject var manager: HelperManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: manager.status == .enabled ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(manager.status == .enabled ? Color.green : Color.secondary)
+                Text("Helper: \(manager.status.title)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                switch manager.status {
+                case .notRegistered:
+                    Button("Enable…") { manager.enable() }
+                        .controlSize(.small)
+                case .requiresApproval:
+                    Button("Open System Settings…") { manager.openSystemSettings() }
+                        .controlSize(.small)
+                    Button("Re-check") { manager.refresh() }
+                        .controlSize(.small)
+                case .enabled:
+                    Button("Disable") { Task { await manager.disable() } }
+                        .controlSize(.small)
+                case .unsignedBuild, .notFound:
+                    EmptyView()
+                }
+            }
+            if let error = manager.lastError {
+                Text(error)
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+            }
+        }
+        .onAppear { manager.refresh() }
     }
 }

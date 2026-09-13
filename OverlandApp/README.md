@@ -22,22 +22,34 @@ Password and certificate profiles skip the sign-in step and pass
 
 * The sign-in result (or password) reaches the privileged gpclient on stdin
   only; it never appears on a command line.
-* **Root** comes from the standard macOS authorization dialog by default
-  (`osascript … with administrator privileges`, the same Security Agent sheet
-  installers use). It asks for an administrator's *name and password*, so a
-  non-administrator account can connect with an admin's credentials. Because
-  `do shell script` is synchronous, what runs under authorization is a small
-  wrapper (`~/Library/Application Support/Overland/overland-privileged-wrapper.sh`)
-  that detaches a supervisor: it runs gpclient, mirrors its output to a per-run
+* **Root** comes from the **Overland privileged helper**: a small launchd
+  daemon inside the bundle (`Contents/MacOS/OverlandHelper`, registered with
+  `SMAppService` from `Contents/Library/LaunchDaemons/io.bino.overland.helper.plist`).
+  It is approved once in System Settings › Login Items & Extensions; from then
+  on connecting never prompts. The daemon owns the `gpclient` process, so it
+  survives app quits and crashes, and the app simply re-attaches over XPC.
+  Security: only a client signed with the helper's own Team ID and the
+  `io.bino.overland` bundle id is accepted; every request is checked by
+  `HelperRequestValidator` (only the bundled `gpclient`, only
+  `connect`/`disconnect`, an allow-list of flags, hostname-shaped servers, the
+  bundled `vpnc-script`, cert/key files owned by the caller); `gpclient` and the
+  bundle's code signature are verified immediately before each launch; the
+  SAML result or password travels over XPC to the process's stdin only.
+  The daemon exits when idle and launchd restarts it on demand.
+* **Fallback:** an unsigned (ad-hoc) build, or a user who declines the
+  background item, gets the standard macOS administrator authorization dialog
+  on every connect (`osascript … with administrator privileges`). Because
+  `do shell script` is synchronous, a wrapper
+  (`~/Library/Application Support/Overland/overland-privileged-wrapper.sh`)
+  detaches a supervisor that runs gpclient, mirrors its output to a per-run
   log the app tails, and relays `stop`/`kill` from a FIFO. Processes started
-  through the trampoline inherit a signal mask with SIGINT/SIGTERM blocked, so
-  the command is exec'd through `overland-exec`, a shim that resets the mask
-  and dispositions first — without it the tunnel could never be signalled. Settings ▸ Backend
-  can switch to `sudo -A` (askpass dialog), `sudo -n` (NOPASSWD sudoers rule),
-  or no escalation.
-* Disconnect sends SIGINT to gpclient (through the supervisor's FIFO, or via
-  sudo which relays it); gpclient tears the tunnel down cleanly. If it ignores
-  the signal the app terminates it after a grace period.
+  through the trampoline inherit a signal mask with SIGINT/SIGTERM/SIGALRM
+  blocked, so the wrapper re-execs through `overland-exec`, a shim that resets
+  the mask first — without it neither gpclient nor the supervisor could be
+  signalled.
+* Disconnect sends SIGINT to gpclient (via the helper, or the fallback's
+  FIFO); gpclient tears the tunnel down cleanly and restores routes and DNS.
+  If it ignores the signal the app terminates it after a grace period.
 * The JSON log stream (`--log-format json`) is parsed into structured entries:
   gateway inventory, tunnel-up, session lifetime, warnings and errors drive the
   UI state. The tunnel's `utun` interface and address come from `ifconfig`;
@@ -59,9 +71,12 @@ OverlandApp/
 │                                 ProcessRunner, GpclientBridgeService, MockBridgeService,
 │                                 PrivilegedProcessRunner (admin dialog), BinaryLocator,
 │                                 SudoAskpass, TunInterfaceInspector, …
-├── Sources/Overland/        SwiftUI views, VpnViewModel, AppDelegate, Keychain
+├── Sources/OverlandHelperShared/ XPC protocols, TunnelManager, HelperService, listener delegate
+├── Sources/OverlandHelper/       the root daemon (code-signature checks, VerifiedRunner)
+├── Sources/overland-exec/        signal-mask reset shim for the fallback path
+├── Sources/Overland/        SwiftUI views, VpnViewModel, HelperManager, HelperProcessRunner, Keychain
 ├── Tests/OverlandCoreTests/ runs on macOS and Linux (Docker) — 70+ tests
-├── Tests/OverlandTests/     view model tests (macOS)
+├── Tests/OverlandTests/     view model, HelperService and XPC round-trip tests (macOS)
 ├── Scripts/                      build_gpclient.sh, bundle.sh, run.sh, test.sh, notarize.sh
 ├── Dockerfile, docker-compose.yml   containerised core tests (what CI runs)
 └── Support/                      Info.plist, entitlements
@@ -83,6 +98,16 @@ open dist/Overland.app
 ```
 
 Requirements: macOS 14+, Xcode 16 (Swift 6), Homebrew, Rust 1.89+.
+
+`bundle.sh` signs with the first "Developer ID Application" identity in the
+keychain (`OVERLAND_SIGN_IDENTITY` overrides). The privileged helper only
+registers from a Developer ID-signed bundle, and the registration is tied to
+the bundle's location — install to `/Applications`. Without an identity the
+bundle is ad-hoc signed and the app uses the administrator dialog. `swift run`
+(unbundled) always uses the dialog.
+
+`Overland --helper-status [--helper-register|--helper-unregister]` prints the
+helper's registration state from the app's point of view.
 
 SAML/SSO portals are handled by `gpauth`, which `gpclient` looks for next to
 its own executable (`Contents/MacOS/gpauth` in the bundle, `target/release/gpauth`
@@ -129,14 +154,14 @@ Signs the embedded dylibs and gpclient, then the app with hardened runtime and
   gpclient; use Single Sign-On or the CLI for those.
 * Session extension is performed automatically by gpclient when the gateway
   allows it; the app shows the expiry it reports but has no manual "extend".
-* The authorization dialog appears on every connect (nothing is installed
-  system-wide). A `SMAppService` privileged helper would make it a one-time
-  approval and is the natural next step.
 * Quitting the app while connected disconnects first (the quit is deferred
   until gpclient has torn the tunnel down, up to 10 s). After a crash or force
-  quit, the root-side gpclient keeps running; the next launch re-attaches to
-  it (log replay, Disconnect works) instead of failing with "Another instance
-  of the client is already running".
+  quit the helper keeps the tunnel up and the next launch re-attaches to it
+  (log replay, Disconnect works). The same holds for the fallback path via
+  its session directory.
+* Running a second copy of the app from another location: it can re-attach
+  to a helper-run tunnel, but a fresh connect is refused because its
+  `gpclient` is not the one the registered helper validates against.
 * The app talks to `gpclient` only; `gpservice`/`gpgui` are not used.
 
 ## License

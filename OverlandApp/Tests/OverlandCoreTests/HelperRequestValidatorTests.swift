@@ -52,6 +52,24 @@ final class HelperRequestValidatorTests: XCTestCase {
         }
     }
 
+    /// `/Applications` is a firmlink on APFS: the helper may see the bundle as
+    /// /System/Volumes/Data/Applications while the app says /Applications.
+    func testExecutableComparisonSurvivesSymlinks() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("hrv-link-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir.appendingPathComponent("real/MacOS"), withIntermediateDirectories: true)
+        let real = dir.appendingPathComponent("real/MacOS/gpclient")
+        try "x".write(to: real, atomically: true, encoding: .utf8)
+        let link = dir.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: dir.appendingPathComponent("real"))
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let viaLink = link.appendingPathComponent("MacOS/gpclient").path
+        let v = HelperRequestValidator(gpclientPath: real.path, vpncScriptPath: script, fileInfo: { _ in nil })
+        XCTAssertNoThrow(try v.validate(executable: viaLink, arguments: ["connect", "vpn.example.com"], callerUID: uid))
+        let v2 = HelperRequestValidator(gpclientPath: viaLink, vpncScriptPath: script, fileInfo: { _ in nil })
+        XCTAssertNoThrow(try v2.validate(executable: real.path, arguments: ["connect", "vpn.example.com"], callerUID: uid))
+    }
+
     func testRejectsForeignExecutable() {
         XCTAssertEqual(reject(["connect", "vpn.example.com"], executable: "/tmp/gpclient"), .wrongExecutable("/tmp/gpclient"))
     }

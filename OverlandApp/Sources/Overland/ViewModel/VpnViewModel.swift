@@ -92,6 +92,8 @@ public final class VpnViewModel: ObservableObject {
         set { profile.knownGateways = newValue }
     }
 
+    public let helperManager: HelperManager
+
     private var bridge: BridgeServiceProtocol
     private let mockBridge: MockBridgeService
     private let liveBridge: GpclientBridgeService
@@ -111,11 +113,13 @@ public final class VpnViewModel: ObservableObject {
         storage: VpnViewModelStorage = VpnViewModelStorage(),
         statsReader: InterfaceStatsReader = InterfaceStatsReader(),
         mockBridge: MockBridgeService = MockBridgeService(),
-        liveBridge: GpclientBridgeService? = nil
+        liveBridge: GpclientBridgeService? = nil,
+        helperManager: HelperManager = HelperManager()
     ) {
         self.storage = storage
         self.statsReader = statsReader
         self.mockBridge = mockBridge
+        self.helperManager = helperManager
 
         let defaults = storage.defaults
         let storedMock = defaults.object(forKey: useMockKey) as? Bool ?? false
@@ -130,7 +134,11 @@ public final class VpnViewModel: ObservableObject {
 
         let customPath = defaults.string(forKey: customBinaryKey) ?? ""
         self.customBinaryPath = customPath
-        self.liveBridge = liveBridge ?? GpclientBridgeService(customGpclientPath: customPath.isEmpty ? nil : customPath)
+        self.liveBridge = liveBridge ?? GpclientBridgeService(
+            customGpclientPath: customPath.isEmpty ? nil : customPath,
+            privilegedRunnerFactory: helperManager.privilegedRunnerFactory(),
+            helperAttach: helperManager.helperAttach()
+        )
 
         if let bridge {
             self.bridge = bridge
@@ -388,6 +396,7 @@ public final class VpnViewModel: ObservableObject {
     /// Called once the UI is up: re-attaches to a tunnel a previous process
     /// left running, otherwise honors the profile's auto-connect flag.
     public func handleLaunch() {
+        helperManager.refresh()
         Task {
             let adopted = await self.bridge.adoptOrphanedSession()
             if !adopted, self.profile.autoConnect, !self.profile.portal.isEmpty, self.state.isDisconnected {
