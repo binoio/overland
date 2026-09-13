@@ -31,9 +31,21 @@ var products: [Product] = [
 
 #if os(macOS)
 targets += [
+    // XPC contract + tunnel management shared by the app and the helper.
+    .target(
+        name: "OverlandHelperShared",
+        dependencies: ["OverlandCore"],
+        path: "Sources/OverlandHelperShared"
+    ),
+    // Root launchd daemon registered with SMAppService; runs gpclient.
+    .executableTarget(
+        name: "OverlandHelper",
+        dependencies: ["OverlandCore", "OverlandHelperShared"],
+        path: "Sources/OverlandHelper"
+    ),
     .executableTarget(
         name: "Overland",
-        dependencies: ["OverlandCore"],
+        dependencies: ["OverlandCore", "OverlandHelperShared"],
         path: "Sources/Overland",
         resources: [
             .process("Resources")
@@ -44,11 +56,12 @@ targets += [
     ),
     .testTarget(
         name: "OverlandTests",
-        dependencies: ["Overland", "OverlandCore"],
+        dependencies: ["Overland", "OverlandCore", "OverlandHelperShared"],
         path: "Tests/OverlandTests"
     )
 ]
 products.append(.executable(name: "Overland", targets: ["Overland"]))
+products.append(.executable(name: "OverlandHelper", targets: ["OverlandHelper"]))
 #endif
 
 let package = Package(
