@@ -95,7 +95,7 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
         mtu: Int = 0,
         forceDPD: Int = 0,
         reconnectTimeout: Int = 300,
-        enableHIP: Bool = false,
+        enableHIP: Bool = true,
         rotateHIPValues: Bool = false,
         hipRotationIndex: Int = 0,
         customHIPScriptPath: String? = nil,
@@ -160,7 +160,7 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
         mtu = try c.decodeIfPresent(Int.self, forKey: .mtu) ?? 0
         forceDPD = try c.decodeIfPresent(Int.self, forKey: .forceDPD) ?? 0
         reconnectTimeout = try c.decodeIfPresent(Int.self, forKey: .reconnectTimeout) ?? defaults.reconnectTimeout
-        enableHIP = try c.decodeIfPresent(Bool.self, forKey: .enableHIP) ?? false
+        enableHIP = try c.decodeIfPresent(Bool.self, forKey: .enableHIP) ?? true
         rotateHIPValues = try c.decodeIfPresent(Bool.self, forKey: .rotateHIPValues) ?? false
         hipRotationIndex = try c.decodeIfPresent(Int.self, forKey: .hipRotationIndex) ?? 0
         customHIPScriptPath = try c.decodeIfPresent(String.self, forKey: .customHIPScriptPath)

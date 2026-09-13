@@ -120,6 +120,8 @@ fi
 DEFAULT_ROUTE_FILE=/var/run/vpnc/defaultroute.${VPNPID}
 DEFAULT_ROUTE_FILE_IPV6=/var/run/vpnc/defaultroute_ipv6.${VPNPID}
 RESOLV_CONF_BACKUP=/var/run/vpnc/resolv.conf-backup.${VPNPID}
+NETWORK_SERVICE_BACKUP=/var/run/vpnc/networkservice-backup.${VPNPID}
+DNS_BACKUP=/var/run/vpnc/dns-backup.${VPNPID}
 SCRIPTNAME=`basename $0`
 
 # some systems, eg. Darwin & FreeBSD, prune /var/run on boot
@@ -724,10 +726,40 @@ search $DOMAINS"
 						close
 					EOF
 				fi
-				# For newer MacOS versions it is needed to set DNS
-				ACTIVE_INTERFACE=`route -n get default | grep interface | awk '{print $2}'`
-				ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder | grep -B 1 "$ACTIVE_INTERFACE" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
-				networksetup -setdnsservers "$ACTIVE_NETWORK_SERVICE" $INTERNAL_IP4_DNS
+				# For newer MacOS versions it is needed to set DNS on the physical network service
+				ACTIVE_INTERFACE=""
+				if [ -n "$VPNGATEWAY" ]; then
+					case "$VPNGATEWAY" in
+						*:*) ACTIVE_INTERFACE=`route -n get -inet6 "$VPNGATEWAY" 2>/dev/null | grep interface | awk '{print $2}'` ;;
+						*)   ACTIVE_INTERFACE=`route -n get "$VPNGATEWAY" 2>/dev/null | grep interface | awk '{print $2}'` ;;
+					esac
+				fi
+				if [ -z "$ACTIVE_INTERFACE" ] || [ "$ACTIVE_INTERFACE" = "$TUNDEV" ]; then
+					if [ -s "$DEFAULT_ROUTE_FILE" ]; then
+						ACTIVE_INTERFACE=`route -n get "\`cat \"$DEFAULT_ROUTE_FILE\"\`" 2>/dev/null | grep interface | awk '{print $2}'`
+					fi
+				fi
+				if [ -z "$ACTIVE_INTERFACE" ] || [ "$ACTIVE_INTERFACE" = "$TUNDEV" ]; then
+					ACTIVE_INTERFACE=`route -n get default 2>/dev/null | grep interface | awk '{print $2}'`
+				fi
+				if [ -n "$ACTIVE_INTERFACE" ] && [ "$ACTIVE_INTERFACE" != "$TUNDEV" ]; then
+					ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder 2>/dev/null | grep -B 1 "Device: $ACTIVE_INTERFACE)" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
+					if [ -z "$ACTIVE_NETWORK_SERVICE" ]; then
+						ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder 2>/dev/null | grep -B 1 "$ACTIVE_INTERFACE" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
+					fi
+					if [ -n "$ACTIVE_NETWORK_SERVICE" ]; then
+						echo "$ACTIVE_NETWORK_SERVICE" > "$NETWORK_SERVICE_BACKUP"
+						OLD_DNS=`networksetup -getdnsservers "$ACTIVE_NETWORK_SERVICE" 2>/dev/null`
+						if echo "$OLD_DNS" | grep -qi "There aren't any"; then
+							echo "Empty" > "$DNS_BACKUP"
+						elif [ -n "$OLD_DNS" ]; then
+							echo "$OLD_DNS" > "$DNS_BACKUP"
+						else
+							echo "Empty" > "$DNS_BACKUP"
+						fi
+						networksetup -setdnsservers "$ACTIVE_NETWORK_SERVICE" $INTERNAL_IP4_DNS
+					fi
+				fi
 				;;
 		esac
 	fi
@@ -770,9 +802,36 @@ restore_resolvconf_generic() {
 					fi
 				fi
 				# For newer MacOS versions it is needed to unset DNS
-				ACTIVE_INTERFACE=`route -n get default | grep interface | awk '{print $2}'`
-				ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder | grep -B 1 "$ACTIVE_INTERFACE" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
-				networksetup -setdnsservers "$ACTIVE_NETWORK_SERVICE" Empty
+				if [ -s "$NETWORK_SERVICE_BACKUP" ]; then
+					RESTORE_SERVICE=`cat "$NETWORK_SERVICE_BACKUP"`
+					if [ -s "$DNS_BACKUP" ]; then
+						RESTORE_DNS=`cat "$DNS_BACKUP"`
+					else
+						RESTORE_DNS="Empty"
+					fi
+					networksetup -setdnsservers "$RESTORE_SERVICE" $RESTORE_DNS 2>/dev/null || true
+					rm -f -- "$NETWORK_SERVICE_BACKUP" "$DNS_BACKUP"
+				else
+					ACTIVE_INTERFACE=""
+					if [ -n "$VPNGATEWAY" ]; then
+						case "$VPNGATEWAY" in
+							*:*) ACTIVE_INTERFACE=`route -n get -inet6 "$VPNGATEWAY" 2>/dev/null | grep interface | awk '{print $2}'` ;;
+							*)   ACTIVE_INTERFACE=`route -n get "$VPNGATEWAY" 2>/dev/null | grep interface | awk '{print $2}'` ;;
+						esac
+					fi
+					if [ -z "$ACTIVE_INTERFACE" ] || [ "$ACTIVE_INTERFACE" = "$TUNDEV" ]; then
+						ACTIVE_INTERFACE=`route -n get default 2>/dev/null | grep interface | awk '{print $2}'`
+					fi
+					if [ -n "$ACTIVE_INTERFACE" ] && [ "$ACTIVE_INTERFACE" != "$TUNDEV" ]; then
+						ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder 2>/dev/null | grep -B 1 "Device: $ACTIVE_INTERFACE)" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
+						if [ -z "$ACTIVE_NETWORK_SERVICE" ]; then
+							ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder 2>/dev/null | grep -B 1 "$ACTIVE_INTERFACE" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
+						fi
+						if [ -n "$ACTIVE_NETWORK_SERVICE" ]; then
+							networksetup -setdnsservers "$ACTIVE_NETWORK_SERVICE" Empty 2>/dev/null || true
+						fi
+					fi
+				fi
 				;;
 		esac
 	fi

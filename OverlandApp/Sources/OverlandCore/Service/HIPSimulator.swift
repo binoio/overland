@@ -61,15 +61,60 @@ public enum HIPSimulator {
 
     /// Generates a complete POSIX shell script that acts as OpenConnect's `--csd-wrapper`
     /// and emits a simulated, rotated HIP XML report to stdout.
-    public static func generateScript(for identity: SimulatedHostIdentity) -> String {
-        """
+    /// If `allowGpclientProbe` is true and a valid `gpclient` binary is available,
+    /// it queries real macOS security posture, falling back to simulated XML.
+    public static func generateScript(
+        for identity: SimulatedHostIdentity,
+        gpclientPath: String? = nil,
+        allowGpclientProbe: Bool = true
+    ) -> String {
+        let probeBlock: String
+        if allowGpclientProbe {
+            let directCandidate = gpclientPath.map { "\"\($0)\"" } ?? "\"\""
+            probeBlock = """
+            GPCLIENT_EXEC=""
+            for candidate in \
+                \(directCandidate) \
+                "/Applications/Overland.app/Contents/MacOS/gpclient" \
+                "${HOME}/Applications/Overland.app/Contents/MacOS/gpclient" \
+                "/opt/homebrew/bin/gpclient" \
+                "/usr/local/bin/gpclient" \
+                "/usr/bin/gpclient"; do
+              if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+                GPCLIENT_EXEC="$candidate"
+                break
+              fi
+            done
+
+            if [ -z "$GPCLIENT_EXEC" ]; then
+              GPCLIENT_EXEC="$(command -v gpclient 2>/dev/null || true)"
+            fi
+
+            if [ -n "$GPCLIENT_EXEC" ] && [ -x "$GPCLIENT_EXEC" ]; then
+              EXTRA_ARGS=""
+              [ -n "$CLIENT_IP" ] && EXTRA_ARGS="$EXTRA_ARGS --client-ip $CLIENT_IP"
+              [ -n "$CLIENT_IPV6" ] && EXTRA_ARGS="$EXTRA_ARGS --client-ipv6 $CLIENT_IPV6"
+              REAL_REPORT=$("$GPCLIENT_EXEC" hip --client-version "$CLIENT_VERSION" --client-os "$CLIENT_OS" --cookie "$COOKIE" --md5 "$MD5" $EXTRA_ARGS 2>/dev/null || true)
+              if printf '%s\\n' "$REAL_REPORT" | grep -q '<hip-report'; then
+                printf '%s\\n' "$REAL_REPORT"
+                exit 0
+              fi
+            fi
+            """
+        } else {
+            probeBlock = ""
+        }
+
+        return """
         #!/bin/sh
-        # Overland simulated HIP report script (auto-generated)
+        # Overland HIP report script (auto-generated)
         COOKIE=""
         MD5=""
         CLIENT_VERSION="6.2.4-49"
         CLIENT_OS="Mac"
         OS_VERSION="Apple Mac OS X 14.5.0"
+        CLIENT_IP=""
+        CLIENT_IPV6=""
 
         while [ $# -gt 0 ]; do
           case "$1" in
@@ -78,9 +123,13 @@ public enum HIPSimulator {
             --client-version) CLIENT_VERSION="$2"; shift 2 ;;
             --client-os) CLIENT_OS="$2"; shift 2 ;;
             --os-version) OS_VERSION="$2"; shift 2 ;;
+            --client-ip) CLIENT_IP="$2"; shift 2 ;;
+            --client-ipv6) CLIENT_IPV6="$2"; shift 2 ;;
             *) shift ;;
           esac
         done
+
+        \(probeBlock)
 
         USER_NAME=""
         DOMAIN=""
@@ -220,10 +269,15 @@ public enum HIPSimulator {
         """
     }
 
-    /// Writes the simulated HIP script to `destination` with executable permissions (0755).
+    /// Writes the HIP script to `destination` with executable permissions (0755).
     @discardableResult
-    public static func writeScript(to destination: URL, identity: SimulatedHostIdentity) throws -> String {
-        let content = generateScript(for: identity)
+    public static func writeScript(
+        to destination: URL,
+        identity: SimulatedHostIdentity,
+        gpclientPath: String? = nil,
+        allowGpclientProbe: Bool = true
+    ) throws -> String {
+        let content = generateScript(for: identity, gpclientPath: gpclientPath, allowGpclientProbe: allowGpclientProbe)
         try content.write(to: destination, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destination.path)
         return destination.path

@@ -204,7 +204,7 @@ public struct GpclientCommandBuilder: Sendable {
         }
         if profile.enableHIP {
             let script = hipScriptPath ?? profile.customHIPScriptPath
-            if profile.rotateHIPValues, let script, !script.isEmpty {
+            if let script, !script.isEmpty {
                 args += ["--hip", script]
             } else {
                 args.append("--hip")

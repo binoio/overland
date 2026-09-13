@@ -43,7 +43,8 @@ final class GpclientCommandBuilderTests: XCTestCase {
         XCTAssertEqual(cmd.arguments, [
             "--log-format", "json",
             "connect", "vpn.example.com", "--auto-gateway", "--cookie-on-stdin",
-            "--script", "/opt/vpnc-script"
+            "--script", "/opt/vpnc-script",
+            "--hip"
         ])
         XCTAssertEqual(cmd.stdin, samlJSON + "\n")
         XCTAssertFalse(cmd.displayString.contains("preloginCookie"), "secrets must never appear in the logged command line")
@@ -97,6 +98,14 @@ final class GpclientCommandBuilderTests: XCTestCase {
         // Also test passing explicit hipScriptPath argument
         let cmdExplicit = builder.tunnelCommand(profile: profile, password: nil, authResult: samlJSON, hipScriptPath: "/custom/sim-hip.sh")
         XCTAssertTrue(cmdExplicit.arguments.contains(["--hip", "/custom/sim-hip.sh"]))
+    }
+
+    func testTunnelCommandWithNonRotatedHIPScript() {
+        var profile = ConnectionProfile(portal: "vpn.example.com", authMethod: .browserSSO)
+        profile.enableHIP = true
+        profile.rotateHIPValues = false
+        let cmd = builder.tunnelCommand(profile: profile, password: nil, authResult: samlJSON, hipScriptPath: "/tmp/overland-hip.sh")
+        XCTAssertTrue(cmd.arguments.contains(["--hip", "/tmp/overland-hip.sh"]))
     }
 
     /// `--fix-openssl` and `--ignore-tls-errors` are global clap flags: gpclient

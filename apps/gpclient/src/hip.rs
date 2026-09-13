@@ -183,7 +183,7 @@ impl NetworkInterface {
 
 #[derive(Args)]
 pub(crate) struct HipArgs {
-  #[arg(long, help = "The GP client version, e.g., 6.2.4-49")]
+  #[arg(long, default_value = "6.2.4-49", help = "The GP client version, e.g., 6.2.4-49")]
   client_version: String,
 
   #[arg(long, value_enum, help = "The client OS")]

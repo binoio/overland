@@ -11,6 +11,7 @@ final class ConnectionProfileTests: XCTestCase {
         XCTAssertEqual(profile.reconnectTimeout, 300)
         XCTAssertFalse(profile.disableIPv6)
         XCTAssertEqual(profile.mtu, 0)
+        XCTAssertTrue(profile.enableHIP)
         XCTAssertTrue(profile.knownGateways.isEmpty)
     }
 
@@ -63,6 +64,7 @@ final class ConnectionProfileTests: XCTestCase {
         XCTAssertEqual(decoded.browserMode, .systemDefault)
         XCTAssertEqual(decoded.reconnectTimeout, 300)
         XCTAssertFalse(decoded.rotateHIPValues)
+        XCTAssertTrue(decoded.enableHIP)
         XCTAssertEqual(decoded.hipRotationIndex, 0)
         XCTAssertNil(decoded.customHIPScriptPath)
         XCTAssertTrue(decoded.knownGateways.isEmpty)

@@ -165,6 +165,20 @@ if (( ! SKIP_GPCLIENT )); then
         cp "$VPNC_SCRIPT" "${RESOURCES_DIR}/vpnc-script"
         chmod 755 "${RESOURCES_DIR}/vpnc-script"
     fi
+
+    HIPREPORT_SCRIPT="${HIPREPORT_SCRIPT:-}"
+    if [[ -z "$HIPREPORT_SCRIPT" ]]; then
+        for candidate in \
+            "${REPO_ROOT}/packaging/files/usr/libexec/gpclient/hipreport.sh" \
+            "${BREW_PREFIX}/opt/openconnect/libexec/openconnect/hipreport.sh"; do
+            [[ -f "$candidate" ]] && { HIPREPORT_SCRIPT="$candidate"; break; }
+        done
+    fi
+    if [[ -n "$HIPREPORT_SCRIPT" ]]; then
+        echo "==> Embedding hipreport.sh from ${HIPREPORT_SCRIPT}"
+        cp "$HIPREPORT_SCRIPT" "${RESOURCES_DIR}/hipreport.sh"
+        chmod 755 "${RESOURCES_DIR}/hipreport.sh"
+    fi
 fi
 
 # ---------------------------------------------------------------------------
