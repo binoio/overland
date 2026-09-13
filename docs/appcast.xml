@@ -3,6 +3,27 @@
     <channel>
         <title>Overland</title>
         <item>
+            <title>1.0.2</title>
+            <pubDate>Sun, 13 Sep 2026 17:58:45 -0400</pubDate>
+            <sparkle:version>1.0.2</sparkle:version>
+            <sparkle:shortVersionString>1.0.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Overland 1.0.2</h2>
+<p>Bug fixes and improvements for privileged helper detection and user-level Applications support.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Privileged Helper Status Detection:</strong> Fixed an issue where a fresh installation reported "Helper missing from the app bundle" because launchd returns a <code>notFound</code> status prior to initial registration. Overland now distinguishes uninstalled background daemons from missing binaries and displays the "Enable…" action.</li>
+  <li><strong>User Applications &amp; Auto-Detranslocation:</strong> Full support for running from <code>~/Applications</code> in addition to <code>/Applications</code>. When launched from an approved Applications directory under Gatekeeper App Translocation, Overland automatically clears quarantine attributes and relaunches un-translocated so helper registration succeeds reliably.</li>
+  <li><strong>Permission Fallback:</strong> If <code>/Applications</code> is not writable by the current user, Overland automatically relocates to <code>~/Applications</code>.</li>
+  <li><strong>Diagnostics &amp; Recovery:</strong> Added a manual "Re-check" button under Settings ▸ Privileged Helper to re-verify bundle integrity without restarting the app.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>
+]]></description>
+            <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.2/Overland-1.0.2.zip" length="14990845" type="application/octet-stream" sparkle:edSignature="mCNvzPyGBkTuN73x9VrcPb3ZECwNZOOXxVb9JohESlPDg2K5Hi47r1ECF+cLF6mntnQV8TXoGgBy7eilk+9lAw=="/>
+        </item>
+        <item>
             <title>1.0.1</title>
             <pubDate>Sun, 13 Sep 2026 13:45:01 -0400</pubDate>
             <sparkle:version>1.0.1</sparkle:version>
