@@ -328,7 +328,8 @@ actor BlockedMaskOsascriptRunner: ProcessRunning {
               let shell = FakeOsascriptRunner.extractShell(from: command.arguments[1]) else {
             return ProcessResult(exitCode: 2, stderr: "unexpected osascript invocation")
         }
-        let block = "use POSIX qw(sigprocmask SIG_BLOCK SIGINT SIGTERM); sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGINT, SIGTERM)); exec @ARGV"
+        // The trampoline blocks more than INT/TERM; ALRM matters because bash 3.2's `read -t` depends on it.
+        let block = "use POSIX qw(sigprocmask SIG_BLOCK SIGINT SIGTERM SIGALRM SIGHUP SIGUSR1 SIGUSR2); sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGINT, SIGTERM, SIGALRM, SIGHUP, SIGUSR1, SIGUSR2)); exec @ARGV"
         return try await ProcessRunner().run(CommandLine(executable: Self.perl, arguments: ["-e", block, "/bin/sh", "-c", shell]))
     }
 
@@ -419,6 +420,39 @@ final class ExecHelperTests: XCTestCase {
         XCTAssertEqual(result.exitCode, 3)
     }
 
+    /// The supervisor must go away once the command has exited on its own,
+    /// even when launched under a blocked mask. The command exits only after
+    /// the supervisor is already waiting in `read -t`: with SIGALRM blocked
+    /// that read never times out, so the exit file is never noticed — the
+    /// production symptom (root shells lingering after every disconnect).
+    func testSupervisorExitsAfterCommandUnderBlockedMask() async throws {
+        let sessions = root.appendingPathComponent("sessions")
+        let runner = PrivilegedProcessRunner(
+            sessionsDirectory: sessions,
+            execHelperPath: Self.execHelper,
+            pollInterval: 0.05,
+            launchTimeout: 5,
+            runnerFactory: { BlockedMaskOsascriptRunner() }
+        )
+        let supervisor = SupervisorPidBox()
+        let result = try await runner.run(CommandLine(executable: "/bin/bash", arguments: ["-c", "echo ready; sleep 1.5; exit 0"]), onLine: { _, _ in
+            // Capture the supervisor pid while the session still exists.
+            if supervisor.pid == nil,
+               let dir = try? FileManager.default.contentsOfDirectory(at: sessions, includingPropertiesForKeys: nil).first,
+               let text = try? String(contentsOf: dir.appendingPathComponent("supervisor.pid"), encoding: .utf8) {
+                supervisor.pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        })
+        XCTAssertEqual(result.exitCode, 0)
+        let pid = try XCTUnwrap(supervisor.pid, "supervisor.pid was not recorded")
+
+        let deadline = Date().addingTimeInterval(4)
+        while kill(pid, 0) == 0, Date() < deadline {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        XCTAssertNotEqual(kill(pid, 0), 0, "supervisor \(pid) is still alive after the command exited")
+    }
+
     func testOsascriptCommandCarriesHelperPath() async {
         let runner = PrivilegedProcessRunner(sessionsDirectory: root, execHelperPath: "/opt/overland-exec", runnerFactory: { FakeOsascriptRunner() })
         let cmd = await runner.osascriptCommand(session: root, command: CommandLine(executable: "/opt/gpclient", arguments: ["connect"]))
@@ -428,5 +462,14 @@ final class ExecHelperTests: XCTestCase {
         let bare = PrivilegedProcessRunner(sessionsDirectory: root, execHelperPath: nil, runnerFactory: { FakeOsascriptRunner() })
         let bareShell = FakeOsascriptRunner.extractShell(from: (await bare.osascriptCommand(session: root, command: CommandLine(executable: "/opt/gpclient", arguments: []))).arguments[1])!
         XCTAssertTrue(bareShell.contains("'-' '/opt/gpclient'"), bareShell)
+    }
+}
+
+final class SupervisorPidBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _pid: Int32?
+    var pid: Int32? {
+        get { lock.withLock { _pid } }
+        set { lock.withLock { _pid = newValue } }
     }
 }

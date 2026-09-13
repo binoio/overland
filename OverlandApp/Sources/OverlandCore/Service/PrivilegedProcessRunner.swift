@@ -68,9 +68,14 @@ public actor PrivilegedProcessRunner: ProcessRunning {
     # disconnect request.
     SESSION="$1"; shift
     # overland-exec resets the signal mask the authorization trampoline leaves
-    # blocked; without it the command could never receive stop/kill.
+    # blocked. The whole tree needs it: the command could never receive
+    # stop/kill, and this supervisor's `read -t` relies on SIGALRM, so it would
+    # never notice the command exiting. Re-exec once through the helper.
     EXEC_HELPER="$1"; shift
     [ "$EXEC_HELPER" = "-" ] && EXEC_HELPER=""
+    if [ -n "$EXEC_HELPER" ] && [ -z "$OVERLAND_SIGNALS_RESET" ]; then
+      OVERLAND_SIGNALS_RESET=1 exec "$EXEC_HELPER" /bin/bash "$0" "$SESSION" "$EXEC_HELPER" "$@"
+    fi
     LOG="$SESSION/tunnel.log"
     STDIN_FILE="$SESSION/stdin.txt"
     [ -f "$STDIN_FILE" ] || STDIN_FILE=/dev/null
@@ -88,6 +93,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
       # Hold the control FIFO open before the child exists, so the app can
       # write to it as soon as it sees the pid file.
       exec 3<> "$SESSION/control.fifo"
+      echo $$ > "$SESSION/supervisor.pid"
       (
         /bin/bash -c 'echo $$ > "$0/pid"; exec $1 "${@:2}"' "$SESSION" "$EXEC_HELPER" "$@" < "$STDIN_FILE" >> "$LOG" 2>&1 3>&-
         echo $? > "$SESSION/exit.tmp"
