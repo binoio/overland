@@ -178,6 +178,9 @@ if [[ -z "$IDENTITY" ]]; then
     IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
 fi
 
+# Strip extended attributes (such as com.apple.macl) before signing
+xattr -cr "$APP_BUNDLE"
+
 if [[ -n "$IDENTITY" ]]; then
     echo "==> Signing with: ${IDENTITY}"
     SIGN=(codesign --force --options runtime --timestamp --sign "$IDENTITY")
@@ -192,7 +195,7 @@ if [[ -n "$IDENTITY" ]]; then
     for helper in gpclient gpauth overland-exec; do
         [[ -x "${MACOS_DIR}/${helper}" ]] && "${SIGN[@]}" "${MACOS_DIR}/${helper}" >/dev/null
     done
-    "${SIGN[@]}" --entitlements "${APP_DIR}/Support/OverlandHelper.entitlements" "${MACOS_DIR}/OverlandHelper" >/dev/null
+    "${SIGN[@]}" --identifier "io.bino.overland.helper" --entitlements "${APP_DIR}/Support/OverlandHelper.entitlements" "${MACOS_DIR}/OverlandHelper" >/dev/null
     "${SIGN[@]}" --entitlements "${APP_DIR}/Support/Overland.entitlements" "$APP_BUNDLE" >/dev/null
     codesign --verify --deep --strict "$APP_BUNDLE"
     echo "    Team ID: $(codesign -dv "$APP_BUNDLE" 2>&1 | sed -n 's/^TeamIdentifier=//p')"

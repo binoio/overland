@@ -38,6 +38,10 @@ struct SetupView: View {
                         Text("This build isn’t signed, so the helper can’t be installed; Overland will ask for an administrator’s name and password each time it connects.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    } else if helper.status == .requiresMoveToApplications {
+                        Text("Overland is currently running outside /Applications. Move the app to /Applications to allow macOS to authorize and register the privileged helper.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 

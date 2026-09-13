@@ -44,17 +44,19 @@ for helper in gpclient gpauth overland-exec; do
         codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}/Contents/MacOS/${helper}"
     fi
 done
-codesign --force --options runtime --timestamp --sign "$IDENTITY" --entitlements "${APP_DIR}/Support/OverlandHelper.entitlements" "${APP}/Contents/MacOS/OverlandHelper"
+codesign --force --options runtime --timestamp --sign "$IDENTITY" --identifier "io.bino.overland.helper" --entitlements "${APP_DIR}/Support/OverlandHelper.entitlements" "${APP}/Contents/MacOS/OverlandHelper"
 codesign --force --options runtime --timestamp --sign "$IDENTITY" --entitlements "$ENTITLEMENTS" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
 echo "==> Notarizing"
+xattr -cr "$APP"
 rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$APP"
+xattr -cr "$APP"
 rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc "$APP" "$ZIP"
 spctl --assess --type execute --verbose=2 "$APP"
 
 echo "✓ ${ZIP}"

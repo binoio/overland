@@ -98,6 +98,27 @@ public struct SettingsView: View {
                     set: { viewModel.profile.noDTLS = !$0 }
                 ))
                 Toggle("Send HIP (Host Integrity) report", isOn: $viewModel.profile.enableHIP)
+                if viewModel.profile.enableHIP {
+                    Toggle("Rotate simulated HIP values for testing", isOn: $viewModel.profile.rotateHIPValues)
+                        .padding(.leading, 16)
+                    if viewModel.profile.rotateHIPValues {
+                        let nextIdentity = HIPSimulator.identity(for: viewModel.profile.hipRotationIndex + 1)
+                        LabeledContent("Next simulated host (#\(nextIdentity.index))") {
+                            HStack(spacing: 8) {
+                                Text("\(nextIdentity.computerName) (\(nextIdentity.hostId))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Button("Reset") {
+                                    viewModel.profile.hipRotationIndex = 0
+                                    viewModel.saveProfile()
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.caption)
+                            }
+                        }
+                        .padding(.leading, 16)
+                    }
+                }
                 Toggle("Treat the portal address as a gateway", isOn: $viewModel.profile.asGateway)
             }
 
@@ -128,6 +149,7 @@ public struct SettingsView: View {
         .onChange(of: viewModel.profile.disableIPv6) { viewModel.saveProfile() }
         .onChange(of: viewModel.profile.noDTLS) { viewModel.saveProfile() }
         .onChange(of: viewModel.profile.enableHIP) { viewModel.saveProfile() }
+        .onChange(of: viewModel.profile.rotateHIPValues) { viewModel.saveProfile() }
         .onChange(of: viewModel.profile.asGateway) { viewModel.saveProfile() }
         .onChange(of: viewModel.profile.ignoreTLSErrors) { viewModel.saveProfile() }
         .onChange(of: viewModel.profile.fixOpenSSL) { viewModel.saveProfile() }
@@ -261,6 +283,12 @@ struct HelperStatusRow: View {
                 case .notRegistered:
                     Button("Enable…") { manager.enable() }
                         .controlSize(.small)
+                case .requiresMoveToApplications:
+                    Button("Move to Applications…") {
+                        _ = AppLocationCheck.moveToApplications()
+                        manager.refresh()
+                    }
+                    .controlSize(.small)
                 case .requiresApproval:
                     Button("Open System Settings…") { manager.openSystemSettings() }
                         .controlSize(.small)

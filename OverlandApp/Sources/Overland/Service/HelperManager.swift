@@ -18,6 +18,7 @@ public final class HelperManager: ObservableObject {
         case notRegistered
         case requiresApproval
         case enabled
+        case requiresMoveToApplications
         case notFound
 
         public var title: String {
@@ -26,6 +27,7 @@ public final class HelperManager: ObservableObject {
             case .notRegistered: return "Not enabled"
             case .requiresApproval: return "Waiting for approval in System Settings › Login Items & Extensions"
             case .enabled: return "Enabled"
+            case .requiresMoveToApplications: return "Move Overland to /Applications to enable the helper"
             case .notFound: return "Helper missing from the app bundle"
             }
         }
@@ -109,11 +111,25 @@ public final class HelperManager: ObservableObject {
         } else if Self.bundleTeamIdentifier() == nil {
             status = .unsignedBuild
         } else {
+            let effectiveURL = AppLocationCheck.effectiveBundleURL(for: bundleURL)
+            let approved = AppLocationCheck.approvedInstallDirectories()
+            let inApprovedLocation = AppLocationCheck.isInApprovedLocation(bundleURL: effectiveURL, approvedDirectories: approved)
+
             switch service.status {
             case .enabled: status = .enabled
             case .requiresApproval: status = .requiresApproval
-            case .notRegistered: status = .notRegistered
-            case .notFound: status = .notFound
+            case .notRegistered:
+                if !inApprovedLocation {
+                    status = .requiresMoveToApplications
+                } else {
+                    status = .notRegistered
+                }
+            case .notFound:
+                if !inApprovedLocation {
+                    status = .requiresMoveToApplications
+                } else {
+                    status = .notFound
+                }
             @unknown default: status = .notRegistered
             }
         }
@@ -123,6 +139,11 @@ public final class HelperManager: ObservableObject {
     /// Register the daemon; opens System Settings when approval is needed.
     public func enable() {
         lastError = nil
+        if status == .requiresMoveToApplications {
+            _ = AppLocationCheck.promptToMoveToApplicationsIfNeeded()
+            refresh()
+            return
+        }
         do {
             try service.register()
         } catch {
@@ -130,7 +151,7 @@ public final class HelperManager: ObservableObject {
             // not permitted" even though the item is now listed in System
             // Settings; only a real failure (still not registered) is shown.
             refresh()
-            if status == .notRegistered || status == .notFound {
+            if status == .notRegistered || status == .notFound || status == .requiresMoveToApplications {
                 lastError = error.localizedDescription
             }
         }

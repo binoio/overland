@@ -1,0 +1,10 @@
+<h2>Overland 1.0.1</h2>
+<p>Bug fixes and enhancements for the privileged helper installation and testing tooling.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Privileged Helper &amp; Release Packaging Fix:</strong> Fixed an issue where release archives contained AppleDouble metadata files (<code>._*</code>) that invalidated code signatures upon extraction, causing the app to report "Helper missing from the app bundle".</li>
+  <li><strong>App Translocation &amp; Move Prompt:</strong> Enhanced app location detection to recognize Gatekeeper App Translocation when launched from Downloads or temporary folders. Overland now reliably prompts to relocate itself to <code>/Applications</code> so background helper authorization persists.</li>
+  <li><strong>HIP Simulation &amp; Testing:</strong> Added an option under Settings ▸ Network to simulate and automatically rotate client host identity (computer name, rotating MAC address/Host ID, and IP address) per connection attempt for testing without modifying upstream binaries.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> for seamless privileged helper registration.</p>

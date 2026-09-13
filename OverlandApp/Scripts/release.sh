@@ -72,13 +72,29 @@ codesign --verify --deep --strict "$APP"
 [[ "$(codesign -dv "$APP" 2>&1 | sed -n 's/^TeamIdentifier=//p')" != "not set" ]] || { echo "error: bundle is not Developer ID signed" >&2; exit 1; }
 
 echo "==> Notarizing via App Store Connect API"
+xattr -cr "$APP"
 rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$APP"
+xattr -cr "$APP"
 rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent --norsrc "$APP" "$ZIP"
 spctl --assess --type execute --verbose=2 "$APP"
+
+echo "==> Verifying archive integrity"
+if unzip -l "$ZIP" | grep -q '\._'; then
+    echo "error: AppleDouble (._) files found in $ZIP" >&2
+    exit 1
+fi
+VERIFY_DIR="dist/verify-work"
+rm -rf "$VERIFY_DIR"
+mkdir -p "$VERIFY_DIR"
+unzip -q "$ZIP" -d "$VERIFY_DIR"
+codesign --verify --deep --strict "$VERIFY_DIR/Overland.app"
+spctl --assess --type execute --verbose=2 "$VERIFY_DIR/Overland.app"
+rm -rf "$VERIFY_DIR"
+echo "    Archive verified cleanly with zero AppleDouble metadata."
 
 echo "==> Generating appcast (EdDSA signature from login Keychain)"
 WORK="dist/appcast-work"
