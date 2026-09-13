@@ -86,6 +86,19 @@ final class GpclientCommandBuilderTests: XCTestCase {
         XCTAssertNil(cmd.stdin)
     }
 
+    func testTunnelCommandWithSimulatedHIPScript() {
+        var profile = ConnectionProfile(portal: "vpn.example.com", authMethod: .browserSSO)
+        profile.enableHIP = true
+        profile.rotateHIPValues = true
+        profile.customHIPScriptPath = "/tmp/overland-hip-simulated.sh"
+        let cmd = builder.tunnelCommand(profile: profile, password: nil, authResult: samlJSON)
+        XCTAssertTrue(cmd.arguments.contains(["--hip", "/tmp/overland-hip-simulated.sh"]))
+
+        // Also test passing explicit hipScriptPath argument
+        let cmdExplicit = builder.tunnelCommand(profile: profile, password: nil, authResult: samlJSON, hipScriptPath: "/custom/sim-hip.sh")
+        XCTAssertTrue(cmdExplicit.arguments.contains(["--hip", "/custom/sim-hip.sh"]))
+    }
+
     /// `--fix-openssl` and `--ignore-tls-errors` are global clap flags: gpclient
     /// rejects them after the subcommand.
     func testGlobalFlagsPrecedeSubcommand() {

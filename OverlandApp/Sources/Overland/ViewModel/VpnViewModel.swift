@@ -368,6 +368,9 @@ public final class VpnViewModel: ObservableObject {
         guard !state.isBusy else { return }
         statusMessage = nil
         failure = nil
+        if profile.enableHIP && profile.rotateHIPValues {
+            profile.hipRotationIndex += 1
+        }
         connectPhase = GpclientCommandBuilder.needsBrowserAuth(profile) ? .signIn : (helperManager.isUsable ? .tunnel : .authorize)
         saveProfile()
 

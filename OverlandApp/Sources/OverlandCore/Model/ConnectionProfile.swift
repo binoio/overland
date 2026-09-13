@@ -67,6 +67,9 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
     public var forceDPD: Int
     public var reconnectTimeout: Int
     public var enableHIP: Bool
+    public var rotateHIPValues: Bool
+    public var hipRotationIndex: Int
+    public var customHIPScriptPath: String?
     public var asGateway: Bool
     public var vpncScriptPath: String?
     public var privilegeMode: PrivilegeMode
@@ -93,6 +96,9 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
         forceDPD: Int = 0,
         reconnectTimeout: Int = 300,
         enableHIP: Bool = false,
+        rotateHIPValues: Bool = false,
+        hipRotationIndex: Int = 0,
+        customHIPScriptPath: String? = nil,
         asGateway: Bool = false,
         vpncScriptPath: String? = nil,
         privilegeMode: PrivilegeMode = .helper,
@@ -116,6 +122,9 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
         self.forceDPD = forceDPD
         self.reconnectTimeout = reconnectTimeout
         self.enableHIP = enableHIP
+        self.rotateHIPValues = rotateHIPValues
+        self.hipRotationIndex = hipRotationIndex
+        self.customHIPScriptPath = customHIPScriptPath
         self.asGateway = asGateway
         self.vpncScriptPath = vpncScriptPath
         self.privilegeMode = privilegeMode
@@ -128,7 +137,7 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case id, name, portal, selectedGatewayServer, username, authMethod, browserMode
         case certificatePath, sslKeyPath, disableIPv6, noDTLS, ignoreTLSErrors, fixOpenSSL
-        case mtu, forceDPD, reconnectTimeout, enableHIP, asGateway
+        case mtu, forceDPD, reconnectTimeout, enableHIP, rotateHIPValues, hipRotationIndex, customHIPScriptPath, asGateway
         case vpncScriptPath, privilegeMode, autoConnect, knownGateways
     }
 
@@ -152,6 +161,9 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
         forceDPD = try c.decodeIfPresent(Int.self, forKey: .forceDPD) ?? 0
         reconnectTimeout = try c.decodeIfPresent(Int.self, forKey: .reconnectTimeout) ?? defaults.reconnectTimeout
         enableHIP = try c.decodeIfPresent(Bool.self, forKey: .enableHIP) ?? false
+        rotateHIPValues = try c.decodeIfPresent(Bool.self, forKey: .rotateHIPValues) ?? false
+        hipRotationIndex = try c.decodeIfPresent(Int.self, forKey: .hipRotationIndex) ?? 0
+        customHIPScriptPath = try c.decodeIfPresent(String.self, forKey: .customHIPScriptPath)
         asGateway = try c.decodeIfPresent(Bool.self, forKey: .asGateway) ?? false
         vpncScriptPath = try c.decodeIfPresent(String.self, forKey: .vpncScriptPath)
         privilegeMode = try c.decodeIfPresent(PrivilegeMode.self, forKey: .privilegeMode) ?? defaults.privilegeMode

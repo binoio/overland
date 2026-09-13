@@ -82,6 +82,14 @@ public actor MockBridgeService: BridgeServiceProtocol {
         setState(.connecting(status: "Establishing tunnel to \(gateway.name)…"))
         log(.info, "VPNC_SCRIPT: /opt/homebrew/etc/vpnc/vpnc-script")
         log(.info, "Connected to HTTPS on \(gateway.server) with ciphersuite (TLS1.3)-(ECDHE-SECP256R1)-(RSA-PSS-RSAE-SHA256)-(AES-256-GCM)")
+        if profile.enableHIP {
+            if profile.rotateHIPValues {
+                let identity = HIPSimulator.identity(for: profile.hipRotationIndex)
+                log(.info, "Using simulated, rotated HIP values (rotation #\(identity.index)): host=\(identity.computerName), host-id=\(identity.hostId), mac=\(identity.macAddress), ip=\(identity.ipv4Address)")
+            } else {
+                log(.info, "Sending HIP report to gateway")
+            }
+        }
         try await sleep()
         log(.info, "ESP session established with server")
         log(.info, "Connected to VPN, pipe_fd: 7")

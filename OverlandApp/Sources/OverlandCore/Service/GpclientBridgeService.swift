@@ -323,13 +323,26 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
             connectedAt: Date()
         )
 
-        startTunnel(builder: builder, profile: profile, password: password, authResult: authResult)
+        var hipScriptPath: String? = nil
+        if profile.enableHIP && profile.rotateHIPValues {
+            do {
+                let identity = HIPSimulator.identity(for: profile.hipRotationIndex)
+                let scriptURL = temporaryDirectory.appendingPathComponent("overland-hip-simulated.sh")
+                try HIPSimulator.writeScript(to: scriptURL, identity: identity)
+                hipScriptPath = scriptURL.path
+                log(.info, "Using simulated, rotated HIP values (rotation #\(identity.index)): host=\(identity.computerName), host-id=\(identity.hostId), mac=\(identity.macAddress), ip=\(identity.ipv4Address)")
+            } catch {
+                log(.warn, "Failed to generate simulated HIP script: \(error.localizedDescription); falling back to default HIP")
+            }
+        }
+
+        startTunnel(builder: builder, profile: profile, password: password, authResult: authResult, hipScriptPath: hipScriptPath)
     }
 
     // MARK: - Privileged phase
 
-    private func startTunnel(builder: GpclientCommandBuilder, profile: ConnectionProfile, password: String?, authResult: String?) {
-        let command = builder.tunnelCommand(profile: profile, password: password, authResult: authResult)
+    private func startTunnel(builder: GpclientCommandBuilder, profile: ConnectionProfile, password: String?, authResult: String?, hipScriptPath: String? = nil) {
+        let command = builder.tunnelCommand(profile: profile, password: password, authResult: authResult, hipScriptPath: hipScriptPath)
 
         var mode = profile.privilegeMode
         var runner = makePrivilegedRunner(mode)

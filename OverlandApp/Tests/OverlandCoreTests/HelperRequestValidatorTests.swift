@@ -112,6 +112,27 @@ final class HelperRequestValidatorTests: XCTestCase {
         XCTAssertEqual(reject(["connect", "vpn.example.com", "--sslkey", "/nope"], files: files), .fileNotReadable("/nope"))
     }
 
+    func testHipScriptValidation() throws {
+        let files = [
+            "/Users/alice/hip.sh": HelperRequestValidator.FileInfo(isRegularFile: true, ownerUID: uid),
+            "/etc/sudoers": HelperRequestValidator.FileInfo(isRegularFile: true, ownerUID: 0),
+            "/Users/alice/dir": HelperRequestValidator.FileInfo(isRegularFile: false, ownerUID: uid)
+        ]
+        let v = validator(files: files)
+        // Valid file owned by caller
+        let approved = try v.validate(executable: gp, arguments: ["connect", "vpn.example.com", "--hip", "/Users/alice/hip.sh"], callerUID: uid)
+        XCTAssertEqual(approved.arguments, ["connect", "vpn.example.com", "--hip", "/Users/alice/hip.sh"])
+
+        // --hip without path
+        let approvedNoPath = try v.validate(executable: gp, arguments: ["connect", "vpn.example.com", "--hip", "--disable-ipv6"], callerUID: uid)
+        XCTAssertEqual(approvedNoPath.arguments, ["connect", "vpn.example.com", "--hip", "--disable-ipv6"])
+
+        // Rejections for not owned, directory, or missing
+        XCTAssertEqual(reject(["connect", "vpn.example.com", "--hip", "/etc/sudoers"], files: files), .fileNotOwnedByCaller("/etc/sudoers"))
+        XCTAssertEqual(reject(["connect", "vpn.example.com", "--hip", "/Users/alice/dir"], files: files), .fileNotReadable("/Users/alice/dir"))
+        XCTAssertEqual(reject(["connect", "vpn.example.com", "--hip", "/missing.sh"], files: files), .fileNotReadable("/missing.sh"))
+    }
+
     func testStatFileReportsOwnerAndType() throws {
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("hrv-\(UUID().uuidString)")
         try "x".write(to: tmp, atomically: true, encoding: .utf8)

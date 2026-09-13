@@ -193,6 +193,27 @@ final class VpnViewModelTests: XCTestCase {
         XCTAssertTrue(ok9)
     }
 
+    func testHipRotationAdvancesIndexOnConnect() async {
+        let storage = VpnViewModelStorage.ephemeral()
+        let vm = makeViewModel(storage: storage)
+        vm.profile.portal = "vpn.example.com"
+        vm.profile.enableHIP = true
+        vm.profile.rotateHIPValues = true
+        vm.profile.hipRotationIndex = 0
+        vm.saveProfile()
+
+        vm.connect()
+        XCTAssertEqual(vm.profile.hipRotationIndex, 1)
+
+        let reloaded = makeViewModel(storage: storage)
+        XCTAssertEqual(reloaded.profile.hipRotationIndex, 1)
+
+        // Reset state so it's not busy, then connect again
+        vm.state = .disconnected
+        vm.connect()
+        XCTAssertEqual(vm.profile.hipRotationIndex, 2)
+    }
+
     // MARK: helpers
 
     private final class Counters: @unchecked Sendable {

@@ -29,6 +29,9 @@ final class ConnectionProfileTests: XCTestCase {
             forceDPD: 30,
             reconnectTimeout: 60,
             enableHIP: true,
+            rotateHIPValues: true,
+            hipRotationIndex: 7,
+            customHIPScriptPath: "/tmp/my-hip.sh",
             vpncScriptPath: "/opt/vpnc-script",
             privilegeMode: .adminPrompt,
             autoConnect: true,
@@ -40,6 +43,9 @@ final class ConnectionProfileTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ConnectionProfile.self, from: data)
 
         XCTAssertEqual(profile, decoded)
+        XCTAssertTrue(decoded.rotateHIPValues)
+        XCTAssertEqual(decoded.hipRotationIndex, 7)
+        XCTAssertEqual(decoded.customHIPScriptPath, "/tmp/my-hip.sh")
     }
 
     /// Profiles written by the first build of the app lack every key added
@@ -56,6 +62,9 @@ final class ConnectionProfileTests: XCTestCase {
         XCTAssertEqual(decoded.privilegeMode, .helper)
         XCTAssertEqual(decoded.browserMode, .systemDefault)
         XCTAssertEqual(decoded.reconnectTimeout, 300)
+        XCTAssertFalse(decoded.rotateHIPValues)
+        XCTAssertEqual(decoded.hipRotationIndex, 0)
+        XCTAssertNil(decoded.customHIPScriptPath)
         XCTAssertTrue(decoded.knownGateways.isEmpty)
     }
 

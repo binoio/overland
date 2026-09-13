@@ -183,7 +183,7 @@ public struct GpclientCommandBuilder: Sendable {
     /// The privileged `gpclient connect`. `authResult` is the gpauth JSON for
     /// SSO profiles; password/certificate profiles pass their credentials here.
     /// The result is *not* yet wrapped for privilege escalation — see `escalate`.
-    public func tunnelCommand(profile: ConnectionProfile, password: String?, authResult: String?) -> CommandLine {
+    public func tunnelCommand(profile: ConnectionProfile, password: String?, authResult: String?, hipScriptPath: String? = nil) -> CommandLine {
         var args = globalFlags(for: profile)
         args += ["connect", profile.portal]
         args += gatewaySelectionFlags(for: profile)
@@ -203,7 +203,12 @@ public struct GpclientCommandBuilder: Sendable {
             args += ["--script", script]
         }
         if profile.enableHIP {
-            args.append("--hip")
+            let script = hipScriptPath ?? profile.customHIPScriptPath
+            if profile.rotateHIPValues, let script, !script.isEmpty {
+                args += ["--hip", script]
+            } else {
+                args.append("--hip")
+            }
         }
         if profile.disableIPv6 { args.append("--disable-ipv6") }
         if profile.noDTLS { args.append("--no-dtls") }

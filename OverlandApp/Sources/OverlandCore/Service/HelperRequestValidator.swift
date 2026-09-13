@@ -144,6 +144,18 @@ public struct HelperRequestValidator: Sendable {
         guard seen.insert(flag).inserted else { throw Rejection.duplicateFlag(flag) }
         index += 1
         out.append(flag)
+
+        if flag == "--hip" {
+            if index < arguments.count && !arguments[index].hasPrefix("--") {
+                let value = arguments[index]
+                index += 1
+                guard let info = fileInfo(value), info.isRegularFile else { throw Rejection.fileNotReadable(value) }
+                guard info.ownerUID == callerUID else { throw Rejection.fileNotOwnedByCaller(value) }
+                out.append(value)
+            }
+            return
+        }
+
         guard valueCount == 1 else { return }
         guard index < arguments.count, !arguments[index].hasPrefix("--") else { throw Rejection.missingValue(flag) }
         let value = arguments[index]
