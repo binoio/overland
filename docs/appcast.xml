@@ -3,6 +3,27 @@
     <channel>
         <title>Overland</title>
         <item>
+            <title>1.0.4</title>
+            <pubDate>Sun, 13 Sep 2026 18:53:15 -0400</pubDate>
+            <sparkle:version>1.0.4</sparkle:version>
+            <sparkle:shortVersionString>1.0.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Overland 1.0.4</h2>
+<p>Network DNS configuration fixes and automatic Host Integrity Protection (HIP) report submission.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>macOS DNS Configuration Fix:</strong> Resolved an issue where establishing a tunnel failed to configure DNS with the error <code>is not a recognized network service</code>. The routing script now resolves the physical network service via the VPN gateway route instead of querying the redirected default tunnel interface, backing up original DNS configurations and cleanly restoring them on disconnect.</li>
+  <li><strong>Automatic Host Integrity Protection (HIP) Submission:</strong> Enabled HIP reporting by default and added automatic generation and submission of compliant HIP posture reports. Gateways enforcing endpoint security posture checks (such as university and enterprise networks) receive the host's actual security posture (FileVault, Application Firewall, Gatekeeper, XProtect, and Software Update status), preventing network traffic from being quarantined or isolated.</li>
+  <li><strong>Self-Contained Posture Probe:</strong> Bundled the <code>hipreport.sh</code> helper inside the application package and updated the posture probe to run standalone without external Homebrew or system dependencies.</li>
+  <li><strong>Testing &amp; Simulated Identity Support:</strong> Maintained support for rotated simulated host identities for diagnostic and testing environments.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>
+]]></description>
+            <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.4/Overland-1.0.4.zip" length="15006017" type="application/octet-stream" sparkle:edSignature="ArJ5996AUVuz3wDHF/vE5GgmGTGnm+URy4tbf7E/ATJdI7lCKHwk9ZWCA/QwspXEjQuiEArLEDKcQnc04FNyDg=="/>
+        </item>
+        <item>
             <title>1.0.3</title>
             <pubDate>Sun, 13 Sep 2026 18:09:13 -0400</pubDate>
             <sparkle:version>1.0.3</sparkle:version>
@@ -43,26 +64,6 @@
 <p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>
 ]]></description>
             <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.2/Overland-1.0.2.zip" length="14990845" type="application/octet-stream" sparkle:edSignature="mCNvzPyGBkTuN73x9VrcPb3ZECwNZOOXxVb9JohESlPDg2K5Hi47r1ECF+cLF6mntnQV8TXoGgBy7eilk+9lAw=="/>
-        </item>
-        <item>
-            <title>1.0.1</title>
-            <pubDate>Sun, 13 Sep 2026 13:45:01 -0400</pubDate>
-            <sparkle:version>1.0.1</sparkle:version>
-            <sparkle:shortVersionString>1.0.1</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Overland 1.0.1</h2>
-<p>Bug fixes and enhancements for the privileged helper installation and testing tooling.</p>
-<h3>Highlights</h3>
-<ul>
-  <li><strong>Privileged Helper &amp; Release Packaging Fix:</strong> Fixed an issue where release archives contained AppleDouble metadata files (<code>._*</code>) that invalidated code signatures upon extraction, causing the app to report "Helper missing from the app bundle".</li>
-  <li><strong>App Translocation &amp; Move Prompt:</strong> Enhanced app location detection to recognize Gatekeeper App Translocation when launched from Downloads or temporary folders. Overland now reliably prompts to relocate itself to <code>/Applications</code> so background helper authorization persists.</li>
-  <li><strong>HIP Simulation &amp; Testing:</strong> Added an option under Settings ▸ Network to simulate and automatically rotate client host identity (computer name, rotating MAC address/Host ID, and IP address) per connection attempt for testing without modifying upstream binaries.</li>
-</ul>
-<h3>Requirements</h3>
-<p>macOS 14 or later. Run Overland from <code>/Applications</code> for seamless privileged helper registration.</p>
-]]></description>
-            <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.1/Overland-1.0.1.zip" length="14986904" type="application/octet-stream" sparkle:edSignature="eK3zPaYfv1r3oYwbQyPnaGgrxrYwJwOVlmL7dEUo9kkUCof+udGG6oDMkFXna1EKCb8eEdUmG1+FSdmdIxrQDQ=="/>
         </item>
     </channel>
 </rss>
