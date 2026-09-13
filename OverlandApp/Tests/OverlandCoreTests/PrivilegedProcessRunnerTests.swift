@@ -203,3 +203,115 @@ final class LineSink: @unchecked Sendable {
     var lines: [String] { lock.withLock { _lines } }
     func append(_ l: String) { lock.withLock { _lines.append(l) } }
 }
+
+final class OrphanSessionTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("gp-orphan-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private func makeSession(name: String, pid: Int32?, exited: Bool, command: [String] = ["/opt/gpclient", "connect", "vpn.example.com"]) throws -> URL {
+        let dir = root.appendingPathComponent("sessions/\(name)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let pid { try "\(pid)\n".write(to: dir.appendingPathComponent("pid"), atomically: true, encoding: .utf8) }
+        if exited { try "0\n".write(to: dir.appendingPathComponent("exit"), atomically: true, encoding: .utf8) }
+        try command.joined(separator: "\n").write(to: dir.appendingPathComponent("command.txt"), atomically: true, encoding: .utf8)
+        return dir
+    }
+
+    func testFindsOnlyLiveUnfinishedSessions() throws {
+        let sessions = root.appendingPathComponent("sessions")
+        _ = try makeSession(name: "A-live", pid: ProcessInfo.processInfo.processIdentifier, exited: false)
+        _ = try makeSession(name: "B-exited", pid: ProcessInfo.processInfo.processIdentifier, exited: true)
+        _ = try makeSession(name: "C-dead", pid: 2_147_000_000, exited: false)
+        _ = try makeSession(name: "D-nopid", pid: nil, exited: false)
+
+        let orphans = PrivilegedProcessRunner.findOrphans(in: sessions)
+        XCTAssertEqual(orphans.map { $0.directory.lastPathComponent }, ["A-live"])
+        XCTAssertEqual(orphans.first?.server, "vpn.example.com")
+        XCTAssertEqual(orphans.first?.pid, ProcessInfo.processInfo.processIdentifier)
+        XCTAssertTrue(PrivilegedProcessRunner.findOrphans(in: root.appendingPathComponent("missing")).isEmpty)
+    }
+
+    func testCommandIsRecordedInSession() async throws {
+        let runner = PrivilegedProcessRunner(sessionsDirectory: root.appendingPathComponent("sessions"))
+        let session = try await runner.prepareSession(for: CommandLine(executable: "/opt/gpclient", arguments: ["connect", "vpn.example.com", "--auto-gateway"]))
+        let recorded = try String(contentsOf: session.appendingPathComponent("command.txt"), encoding: .utf8)
+        XCTAssertEqual(recorded, "/opt/gpclient\nconnect\nvpn.example.com\n--auto-gateway")
+    }
+
+    /// Start a session with one runner (as if by a previous app process), then
+    /// adopt it with a fresh runner: the earlier output is replayed, new
+    /// output keeps streaming, and interrupt still reaches the command.
+    func testAdoptReplaysLogAndRelaysInterrupt() async throws {
+        let sessions = root.appendingPathComponent("sessions")
+        let first = PrivilegedProcessRunner(sessionsDirectory: sessions, pollInterval: 0.05, launchTimeout: 5, runnerFactory: { FakeOsascriptRunner(.execute) })
+        let firstLines = LineSink()
+        let script = #"trap 'echo interrupted; exit 3' INT; echo ready; while :; do sleep 0.1; done"#
+        let firstTask = Task {
+            try await first.run(CommandLine(executable: "/bin/bash", arguments: ["-c", script]), onLine: { _, line in firstLines.append(line) })
+        }
+        _ = await pollUntil { firstLines.lines.contains("ready") }
+
+        // The "previous app" goes away without cleaning up: cancel its tail.
+        firstTask.cancel()
+        _ = try? await firstTask.value
+
+        let orphans = PrivilegedProcessRunner.findOrphans(in: sessions)
+        XCTAssertEqual(orphans.count, 1, "the session must survive the first runner")
+        let orphan = try XCTUnwrap(orphans.first)
+        XCTAssertEqual(orphan.command.prefix(2), ["/bin/bash", "-c"])
+
+        let adopted = AdoptedSessionRunner(orphan: orphan, pollInterval: 0.05)
+        let adoptedLines = LineSink()
+        let adoptTask = Task {
+            try await adopted.run(CommandLine(executable: "", arguments: []), onLine: { _, line in adoptedLines.append(line) })
+        }
+        let replayed = await pollUntil { adoptedLines.lines.contains("ready") }
+        XCTAssertTrue(replayed, "earlier output is replayed on adoption")
+
+        await adopted.interrupt()
+        let result = try await adoptTask.value
+        XCTAssertEqual(result.exitCode, 3)
+        XCTAssertEqual(adoptedLines.lines, ["ready", "interrupted"])
+        XCTAssertTrue(PrivilegedProcessRunner.findOrphans(in: sessions).isEmpty, "the session is removed once the command exits")
+    }
+
+    /// The supervisor gives up when its session directory is removed, so a
+    /// deleted session never leaves a stray bash loop behind.
+    func testSupervisorExitsWhenSessionIsRemoved() async throws {
+        let sessions = root.appendingPathComponent("sessions")
+        let runner = PrivilegedProcessRunner(sessionsDirectory: sessions, pollInterval: 0.05, launchTimeout: 5, runnerFactory: { FakeOsascriptRunner(.execute) })
+        let lines = LineSink()
+        let task = Task {
+            try await runner.run(CommandLine(executable: "/bin/bash", arguments: ["-c", "echo ready; exec sleep 30"]), onLine: { _, line in lines.append(line) })
+        }
+        _ = await pollUntil { lines.lines.contains("ready") }
+        let orphan = try XCTUnwrap(PrivilegedProcessRunner.findOrphans(in: sessions).first)
+        task.cancel()
+        _ = try? await task.value
+
+        try FileManager.default.removeItem(at: orphan.directory)
+        // The command itself keeps running (sleep 30); only the supervisor exits. Kill the sleep so nothing lingers.
+        let gone = await pollUntil(timeout: 5) {
+            !ProcessInfo.processInfo.arguments.isEmpty && !FileManager.default.fileExists(atPath: orphan.directory.path)
+        }
+        XCTAssertTrue(gone)
+        kill(orphan.pid, SIGTERM)
+    }
+
+    private func pollUntil(timeout: TimeInterval = 5, _ condition: @escaping () -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if condition() { return true }
+            try? await Task.sleep(nanoseconds: 30_000_000)
+        }
+        return condition()
+    }
+}

@@ -8,6 +8,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWindow.allowsAutomaticWindowTabbing = false
     }
 
+    /// A connected tunnel is torn down before quitting. The reply is deferred
+    /// so gpclient gets a chance to restore routes and DNS; a crash or force
+    /// quit is covered by `adoptOrphanedSession` on the next launch.
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let viewModel = VpnViewModel.shared
+        guard viewModel.hasActiveSession else { return .terminateNow }
+        Task { @MainActor in
+            await viewModel.prepareForTermination()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+
     public func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             for window in sender.windows where window.canBecomeMain {

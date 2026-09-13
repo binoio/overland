@@ -94,7 +94,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
       sleep 0.2
       rm -f "$SESSION/stdin.txt"
 
-      while [ ! -f "$SESSION/exit" ]; do
+      while [ ! -f "$SESSION/exit" ] && [ -d "$SESSION" ]; do
         if read -t 1 -u 3 cmd; then
           PID="$(cat "$SESSION/pid" 2>/dev/null)"
           [ -n "$PID" ] || continue
@@ -110,6 +110,56 @@ public actor PrivilegedProcessRunner: ProcessRunning {
     exit 0
 
     """
+
+    /// A privileged session whose supervisor is still alive but whose app
+    /// process is gone (the app quit or crashed while connected).
+    public struct OrphanSession: Equatable, Sendable {
+        public var directory: URL
+        public var pid: Int32
+        /// The command that was launched, as recorded by `prepareSession`.
+        public var command: [String]
+
+        public init(directory: URL, pid: Int32, command: [String]) {
+            self.directory = directory
+            self.pid = pid
+            self.command = command
+        }
+
+        /// The portal or gateway `gpclient connect` was given, if recognisable.
+        public var server: String? {
+            guard let i = command.firstIndex(of: "connect"), i + 1 < command.count else { return nil }
+            return command[i + 1]
+        }
+    }
+
+    public static let defaultSessionsDirectory: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("Overland/sessions", isDirectory: true)
+    }()
+
+    /// Sessions under `directory` whose command is still running.
+    public static func findOrphans(in directory: URL = defaultSessionsDirectory) -> [OrphanSession] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
+        var result: [OrphanSession] = []
+        for session in entries {
+            guard !fm.fileExists(atPath: session.appendingPathComponent("exit").path),
+                  let pidText = try? String(contentsOf: session.appendingPathComponent("pid"), encoding: .utf8),
+                  let pid = Int32(pidText.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  processIsAlive(pid) else { continue }
+            let command = (try? String(contentsOf: session.appendingPathComponent("command.txt"), encoding: .utf8))?
+                .split(separator: "\n").map(String.init) ?? []
+            result.append(OrphanSession(directory: session, pid: pid, command: command))
+        }
+        return result.sorted { $0.directory.lastPathComponent < $1.directory.lastPathComponent }
+    }
+
+    /// `kill(pid, 0)` succeeds for our own processes and fails with EPERM for
+    /// root's — either way the process exists.
+    static func processIsAlive(_ pid: Int32) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
+    }
 
     public var sessionsDirectory: URL
     public var osascriptPath: String
@@ -130,13 +180,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
         launchTimeout: TimeInterval = 20,
         runnerFactory: @escaping @Sendable () -> any ProcessRunning = { ProcessRunner() }
     ) {
-        if let sessionsDirectory {
-            self.sessionsDirectory = sessionsDirectory
-        } else {
-            let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-                ?? FileManager.default.temporaryDirectory
-            self.sessionsDirectory = base.appendingPathComponent("Overland/sessions", isDirectory: true)
-        }
+        self.sessionsDirectory = sessionsDirectory ?? Self.defaultSessionsDirectory
         self.osascriptPath = osascriptPath
         self.prompt = prompt
         self.pollInterval = pollInterval
@@ -166,6 +210,10 @@ public actor PrivilegedProcessRunner: ProcessRunning {
             try stdin.write(to: stdinURL, atomically: true, encoding: .utf8)
             try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stdinURL.path)
         }
+
+        // Recorded so an orphaned session can be identified after a restart.
+        try ([command.executable] + command.arguments).joined(separator: "\n")
+            .write(to: session.appendingPathComponent("command.txt"), atomically: true, encoding: .utf8)
 
         let fifo = session.appendingPathComponent("control.fifo")
         guard mkfifo(fifo.path, 0o600) == 0 else {
@@ -198,11 +246,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
         let session = try prepareSession(for: command)
         currentSession = session
         running = true
-        defer {
-            running = false
-            currentSession = nil
-            try? FileManager.default.removeItem(at: session)
-        }
+        defer { detach(from: session) }
 
         let launcher = makeRunner()
         let result = try await launcher.run(osascriptCommand(session: session, command: command), onLine: nil)
@@ -223,7 +267,38 @@ public actor PrivilegedProcessRunner: ProcessRunning {
             try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
         }
 
-        // Tail the log until the exit file appears and the log is drained.
+        return try await tail(session: session, onLine: onLine)
+    }
+
+    /// Re-attach to a session started by a previous app process: replay its
+    /// log so far, keep streaming it, and report the exit status when the
+    /// command ends. `interrupt()`/`terminate()` work as for a fresh run.
+    public func adopt(_ orphan: OrphanSession, onLine: (@Sendable (ProcessStream, String) -> Void)?) async throws -> ProcessResult {
+        let session = orphan.directory
+        currentSession = session
+        running = true
+        defer { detach(from: session) }
+        return try await tail(session: session, onLine: onLine)
+    }
+
+    /// Stop tracking `session`. Its directory is removed only once the
+    /// command has exited (or never started); if the tail was cancelled while
+    /// the command is still running, the session stays on disk so a later
+    /// app process can adopt it.
+    private func detach(from session: URL) {
+        running = false
+        currentSession = nil
+        let fm = FileManager.default
+        let exited = fm.fileExists(atPath: session.appendingPathComponent("exit").path)
+        let started = fm.fileExists(atPath: session.appendingPathComponent("pid").path)
+        if exited || !started {
+            try? fm.removeItem(at: session)
+        }
+    }
+
+    /// Tail the log until the exit file appears and the log is drained.
+    private func tail(session: URL, onLine: (@Sendable (ProcessStream, String) -> Void)?) async throws -> ProcessResult {
+        let exitURL = session.appendingPathComponent("exit")
         let logURL = session.appendingPathComponent("tunnel.log")
         let buffer = LineBuffer()
         var offset: UInt64 = 0

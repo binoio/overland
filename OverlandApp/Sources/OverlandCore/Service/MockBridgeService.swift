@@ -115,6 +115,8 @@ public actor MockBridgeService: BridgeServiceProtocol {
         setState(.disconnected)
     }
 
+    public func adoptOrphanedSession() async -> Bool { false }
+
     public func deliverAuthCallback(_ data: String) async throws {
         log(.info, "Received auth callback data (mock): \(data.prefix(24))…")
     }

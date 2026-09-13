@@ -102,7 +102,8 @@ final class GpclientBridgeServiceTests: XCTestCase {
             runnerFactory: { FakeProcessRunner(scripts: scripts, journal: journal) },
             privilegedRunnerFactory: { _ in
                 FakeProcessRunner(scripts: privilegedScripts ?? scripts, journal: privilegedJournal ?? journal)
-            }
+            },
+            orphanScanner: { [] }
         )
     }
 
@@ -183,6 +184,62 @@ final class GpclientBridgeServiceTests: XCTestCase {
         XCTAssertEqual(journal.interrupts, 1)
         XCTAssertEqual(journal.terminates, 0)
         XCTAssertTrue(recorder.states.contains(.disconnecting))
+    }
+
+    func testAdoptsOrphanedSessionAndCanDisconnectIt() async throws {
+        let journal = FakeProcessRunner.Journal()
+        let orphan = PrivilegedProcessRunner.OrphanSession(
+            directory: tempDir.appendingPathComponent("sessions/S1"),
+            pid: 4242,
+            command: ["/fake/gpclient", "--log-format", "json", "connect", "vpn.example.com", "--auto-gateway", "--cookie-on-stdin"]
+        )
+        let ifconfig = IfconfigState()
+        ifconfig.before = "utun7: flags=0 mtu 1400\n\tinet 172.20.0.9 --> 172.20.0.9 netmask 0xffffffff\n"
+        ifconfig.after = ifconfig.before
+        let replay = tunnelUpLines
+        let service = GpclientBridgeService(
+            customGpclientPath: "/fake/gpclient",
+            locator: BinaryLocator(fileExists: { _ in true }, isExecutable: { _ in true }, bundleURL: nil, searchPath: [], workingDirectory: "/x"),
+            askpass: SudoAskpass(directory: tempDir),
+            tunInspector: TunInterfaceInspector(readIfconfig: { ifconfig.read() }),
+            temporaryDirectory: tempDir,
+            disconnectGracePeriod: 1,
+            orphanScanner: { [orphan] },
+            adoptedRunnerFactory: { _ in
+                FakeProcessRunner(scripts: [.init(matches: { _ in true }, lines: replay, waitForSignal: true, exitCodeAfterSignal: 0)], journal: journal)
+            }
+        )
+        let recorder = EventRecorder()
+        recorder.attach(await service.events())
+        defer { recorder.stop() }
+
+        let adopted = await service.adoptOrphanedSession()
+        XCTAssertTrue(adopted)
+
+        let connected = await recorder.wait { $0.contains { if case .state(.connected) = $0 { return true } else { return false } } }
+        XCTAssertTrue(connected, "states: \(recorder.states)")
+        guard case .connected(let details)? = recorder.states.last(where: { $0.isConnected }) else { return XCTFail() }
+        XCTAssertEqual(details.portal, "vpn.example.com")
+        XCTAssertEqual(details.gatewayServer, "us1.vpn.example.com", "gateway recovered from the replayed log")
+        XCTAssertEqual(details.assignedIP, "172.20.0.9", "the single utun with an IPv4 address is taken as the tunnel")
+        XCTAssertTrue(recorder.logs.contains { $0.message.contains("Re-attaching") })
+
+        // A second adoption attempt while attached is a no-op.
+        let again = await service.adoptOrphanedSession()
+        XCTAssertFalse(again)
+
+        try await service.disconnect()
+        let disconnected = await recorder.wait { $0.last == .state(.disconnected) }
+        XCTAssertTrue(disconnected, "states: \(recorder.states)")
+        XCTAssertEqual(journal.interrupts, 1)
+    }
+
+    func testNoOrphanMeansNothingAdopted() async {
+        let service = makeService(scripts: [], journal: FakeProcessRunner.Journal())
+        let adopted = await service.adoptOrphanedSession()
+        XCTAssertFalse(adopted)
+        let state = await service.currentState
+        XCTAssertEqual(state, .disconnected)
     }
 
     func testPasswordConnectSkipsBrowserStep() async throws {

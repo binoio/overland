@@ -147,6 +147,27 @@ final class VpnViewModelTests: XCTestCase {
         XCTAssertTrue(ok8)
     }
 
+    func testPrepareForTerminationDisconnects() async {
+        let vm = makeViewModel()
+        vm.profile.portal = "vpn.example.com"
+        vm.connect()
+        let ok = await eventually { vm.state.isConnected }
+        XCTAssertTrue(ok)
+        XCTAssertTrue(vm.hasActiveSession)
+
+        await vm.prepareForTermination(timeout: 5)
+        XCTAssertTrue(vm.state.isDisconnected)
+        XCTAssertFalse(vm.hasActiveSession)
+        XCTAssertTrue(vm.logs.contains { $0.message.contains("Quitting") })
+    }
+
+    func testPrepareForTerminationIsNoopWhenIdle() async {
+        let vm = makeViewModel()
+        await vm.prepareForTermination(timeout: 1)
+        XCTAssertTrue(vm.state.isDisconnected)
+        XCTAssertFalse(vm.logs.contains { $0.message.contains("Quitting") })
+    }
+
     func testAuthCallbackNotificationIsForwardedToBridge() async {
         let vm = makeViewModel()
         NotificationCenter.default.post(

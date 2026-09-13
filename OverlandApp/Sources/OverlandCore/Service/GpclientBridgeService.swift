@@ -47,6 +47,9 @@ public enum BridgeError: Error, LocalizedError, Equatable {
 public actor GpclientBridgeService: BridgeServiceProtocol {
     public typealias RunnerFactory = @Sendable () -> any ProcessRunning
     public typealias PrivilegedRunnerFactory = @Sendable (PrivilegeMode) -> any ProcessRunning
+    public typealias OrphanScanner = @Sendable () -> [PrivilegedProcessRunner.OrphanSession]
+    /// Produces a runner whose `run` re-attaches to the given orphan instead of launching anything.
+    public typealias AdoptedRunnerFactory = @Sendable (PrivilegedProcessRunner.OrphanSession) -> any ProcessRunning
 
     private let bus = BridgeEventBus()
     private let parser = GpclientOutputParser()
@@ -56,6 +59,8 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
     private let callbackForwarder: AuthCallbackForwarder
     private let makeRunner: RunnerFactory
     private let makePrivilegedRunner: PrivilegedRunnerFactory
+    private let scanOrphans: OrphanScanner
+    private let makeAdoptedRunner: AdoptedRunnerFactory
     private let temporaryDirectory: URL
     private let disconnectGracePeriod: TimeInterval
 
@@ -77,7 +82,9 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         temporaryDirectory: URL = URL(fileURLWithPath: NSTemporaryDirectory()),
         disconnectGracePeriod: TimeInterval = 8,
         runnerFactory: @escaping RunnerFactory = { ProcessRunner() },
-        privilegedRunnerFactory: PrivilegedRunnerFactory? = nil
+        privilegedRunnerFactory: PrivilegedRunnerFactory? = nil,
+        orphanScanner: @escaping OrphanScanner = { PrivilegedProcessRunner.findOrphans() },
+        adoptedRunnerFactory: @escaping AdoptedRunnerFactory = { AdoptedSessionRunner(orphan: $0) }
     ) {
         self.customGpclientPath = customGpclientPath
         self.locator = locator
@@ -90,6 +97,8 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         self.makePrivilegedRunner = privilegedRunnerFactory ?? { mode in
             mode == .adminPrompt ? PrivilegedProcessRunner() : runnerFactory()
         }
+        self.scanOrphans = orphanScanner
+        self.makeAdoptedRunner = adoptedRunnerFactory
     }
 
     public func setCustomGpclientPath(_ path: String?) {
@@ -322,9 +331,39 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
             setState(.connecting(status: "Connecting to \(profile.portal)…"))
         }
 
-        let runner = makePrivilegedRunner(profile.privilegeMode)
+        superviseTunnel(runner: makePrivilegedRunner(profile.privilegeMode), command: command, interfacesBefore: tunInspector.snapshot())
+    }
+
+    /// Adopt a tunnel left behind by a previous app process (quit or crash
+    /// while connected). Its log is replayed, so the parser recovers the
+    /// gateway, connected state and session lifetime; Disconnect works as usual.
+    public func adoptOrphanedSession() async -> Bool {
+        guard currentState.isDisconnected, tunnelRunner == nil, let orphan = scanOrphans().first else { return false }
+
+        let server = orphan.server ?? "the previous session"
+        log(.info, "Re-attaching to the VPN session left running by a previous Overland process (pid \(orphan.pid), \(server))")
+        disconnectRequested = false
+        sessionLifetime = nil
+        activeDetails = ConnectedDetails(
+            portal: orphan.server ?? "",
+            gatewayName: server,
+            gatewayServer: orphan.server ?? "",
+            cipher: nil,
+            connectedAt: Date()
+        )
+        setState(.connecting(status: "Re-attaching to the running session…"))
+
+        // No "before" snapshot exists for an adopted tunnel; any utun that
+        // carries an IPv4 address is a candidate, and a single one is taken.
+        let runner = makeAdoptedRunner(orphan)
+        superviseTunnel(runner: runner, command: CommandLine(executable: "", arguments: orphan.command), interfacesBefore: [])
+        return true
+    }
+
+    /// Run `command` on `runner` and drive the connection state from its output
+    /// until it exits. Used both for freshly launched and adopted tunnels.
+    private func superviseTunnel(runner: any ProcessRunning, command: CommandLine, interfacesBefore: [TunInterfaceInspector.Interface]) {
         tunnelRunner = runner
-        let interfacesBefore = tunInspector.snapshot()
 
         tunnelTask = Task { [weak self] in
             guard let self else { return }
@@ -553,5 +592,34 @@ final class TunnelTracker: @unchecked Sendable {
     var gateways: [Gateway] {
         get { lock.withLock { _gateways } }
         set { lock.withLock { _gateways = newValue } }
+    }
+}
+
+/// A `ProcessRunning` whose `run` re-attaches to an orphaned privileged
+/// session instead of launching the command it is given.
+public actor AdoptedSessionRunner: ProcessRunning {
+    private let orphan: PrivilegedProcessRunner.OrphanSession
+    private let inner: PrivilegedProcessRunner
+    private var running = false
+
+    public init(orphan: PrivilegedProcessRunner.OrphanSession, pollInterval: TimeInterval = 0.15) {
+        self.orphan = orphan
+        self.inner = PrivilegedProcessRunner(sessionsDirectory: orphan.directory.deletingLastPathComponent(), pollInterval: pollInterval)
+    }
+
+    public var isRunning: Bool { running }
+
+    public func run(_ command: CommandLine, onLine: (@Sendable (ProcessStream, String) -> Void)?) async throws -> ProcessResult {
+        running = true
+        defer { running = false }
+        return try await inner.adopt(orphan, onLine: onLine)
+    }
+
+    public func interrupt() {
+        Task { await inner.interrupt() }
+    }
+
+    public func terminate() {
+        Task { await inner.terminate() }
     }
 }

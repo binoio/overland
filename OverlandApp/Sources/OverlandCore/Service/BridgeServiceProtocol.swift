@@ -17,6 +17,9 @@ public protocol BridgeServiceProtocol: Actor {
     func discoverGateways(profile: ConnectionProfile, password: String?) async throws -> [Gateway]
     /// Hand a `globalprotectcallback:` payload to the login that is waiting for it.
     func deliverAuthCallback(_ data: String) async throws
+    /// Re-attach to a tunnel left running by a previous app process, if any.
+    /// Returns true when a session was adopted.
+    func adoptOrphanedSession() async -> Bool
     func events() -> AsyncStream<BridgeEvent>
     var currentState: VpnState { get }
 }

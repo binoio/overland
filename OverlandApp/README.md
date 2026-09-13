@@ -129,9 +129,11 @@ Signs the embedded dylibs and gpclient, then the app with hardened runtime and
 * The authorization dialog appears on every connect (nothing is installed
   system-wide). A `SMAppService` privileged helper would make it a one-time
   approval and is the natural next step.
-* If the app quits while connected, the root-side gpclient keeps the tunnel
-  up and a later connect fails with "Another instance of the client is already
-  running"; `sudo gpclient disconnect` ends the orphaned tunnel.
+* Quitting the app while connected disconnects first (the quit is deferred
+  until gpclient has torn the tunnel down, up to 10 s). After a crash or force
+  quit, the root-side gpclient keeps running; the next launch re-attaches to
+  it (log replay, Disconnect works) instead of failing with "Another instance
+  of the client is already running".
 * The app talks to `gpclient` only; `gpservice`/`gpgui` are not used.
 
 ## License

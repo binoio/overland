@@ -385,10 +385,32 @@ public final class VpnViewModel: ObservableObject {
         }
     }
 
-    /// Called once the UI is up. Honors the profile's auto-connect flag.
+    /// Called once the UI is up: re-attaches to a tunnel a previous process
+    /// left running, otherwise honors the profile's auto-connect flag.
     public func handleLaunch() {
-        if profile.autoConnect, !profile.portal.isEmpty, state.isDisconnected {
-            connect()
+        Task {
+            let adopted = await self.bridge.adoptOrphanedSession()
+            if !adopted, self.profile.autoConnect, !self.profile.portal.isEmpty, self.state.isDisconnected {
+                self.connect()
+            }
+        }
+    }
+
+    /// Whether quitting now would leave a tunnel behind.
+    public var hasActiveSession: Bool {
+        state.isConnected || state.isConnecting
+    }
+
+    /// Tear the tunnel down before the process exits, waiting up to
+    /// `timeout` for gpclient to finish so routes and DNS are restored.
+    public func prepareForTermination(timeout: TimeInterval = 10) async {
+        guard hasActiveSession else { return }
+        appendLog(LogEntry(level: .info, message: "Quitting: disconnecting the VPN first"))
+        disconnect()
+        let deadline = Date().addingTimeInterval(timeout)
+        while !state.isDisconnected, Date() < deadline {
+            if case .failed = state { break }
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
     }
 
