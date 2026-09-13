@@ -8,13 +8,13 @@ A modern GlobalProtect VPN client for Linux, built on OpenConnect with full supp
 
 > **Inspired by** [gp-saml-gui](https://github.com/dlenski/gp-saml-gui)
 
-## macOS app (JeepNet)
+## macOS app (Overland)
 
-[JeepNet](JeepNetApp/README.md) is a native SwiftUI menu bar/window client
+[Overland](OverlandApp/README.md) is a native SwiftUI menu bar/window client
 for macOS that drives `gpclient`. Build gpclient for macOS with
-`zsh JeepNetApp/Scripts/build_gpclient.sh`, then
-`zsh JeepNetApp/Scripts/bundle.sh` to produce a self-contained
-`dist/JeepNet.app`.
+`zsh OverlandApp/Scripts/build_gpclient.sh`, then
+`zsh OverlandApp/Scripts/bundle.sh` to produce a self-contained
+`dist/Overland.app`.
 
 ## Table of Contents
 

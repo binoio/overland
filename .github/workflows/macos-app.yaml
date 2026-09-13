@@ -1,13 +1,13 @@
 name: macOS App
 
 # The SwiftUI app itself can only be compiled on macOS, so CI covers the
-# platform-independent JeepNetCore module (models, gpclient command
+# platform-independent OverlandCore module (models, gpclient command
 # builder, output parser, bridge orchestration) inside a Linux container, plus
 # the Rust change the app relies on (gateway inventory log lines in gpapi).
 on:
   push:
     paths:
-      - "JeepNetApp/**"
+      - "OverlandApp/**"
       - "crates/gpapi/src/portal/config.rs"
       - ".github/workflows/macos-app.yaml"
     branches:
@@ -17,7 +17,7 @@ on:
       - release/*
   pull_request:
     paths:
-      - "JeepNetApp/**"
+      - "OverlandApp/**"
       - "crates/gpapi/src/portal/config.rs"
       - ".github/workflows/macos-app.yaml"
 
@@ -27,16 +27,16 @@ concurrency:
 
 jobs:
   core-tests:
-    name: JeepNetCore tests (Linux container)
+    name: OverlandCore tests (Linux container)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Build test image
-        run: docker build -t jeepnet-core-tests -f JeepNetApp/Dockerfile JeepNetApp
+        run: docker build -t overland-core-tests -f OverlandApp/Dockerfile OverlandApp
 
       - name: Run tests
-        run: docker run --rm jeepnet-core-tests
+        run: docker run --rm overland-core-tests
 
   gpapi-gateway-inventory:
     name: gpapi portal config tests
