@@ -135,6 +135,14 @@ suite in Docker on an Ubuntu runner.
 Settings ▸ Developer ▸ **Use Mock Bridge** simulates the whole lifecycle in
 the UI without a portal, a gpclient build or administrator privileges.
 
+## Uninstalling
+
+Settings ▸ Backend ▸ **Uninstall…** disconnects if needed and removes the
+helper's background item; after that, trashing the app leaves nothing behind.
+`zsh OverlandApp/Scripts/uninstall.sh` does the same from the command line and
+also deletes the bundle, Application Support folder, preferences and saved
+passwords.
+
 ## Signing and notarizing
 
 ```zsh

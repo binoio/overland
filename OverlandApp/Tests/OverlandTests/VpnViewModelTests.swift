@@ -168,6 +168,20 @@ final class VpnViewModelTests: XCTestCase {
         XCTAssertFalse(vm.logs.contains { $0.message.contains("Quitting") })
     }
 
+    func testUninstallHelperDisconnectsFirst() async {
+        let vm = makeViewModel()
+        vm.profile.portal = "vpn.example.com"
+        vm.connect()
+        let connected = await eventually { vm.state.isConnected }
+        XCTAssertTrue(connected)
+
+        await vm.uninstallHelper()
+        XCTAssertTrue(vm.state.isDisconnected, "the helper owns the tunnel, so it is torn down before unregistering")
+        XCTAssertTrue(vm.logs.contains { $0.message.contains("Uninstalling the helper: disconnecting") })
+        // In this unsigned test process there is nothing registered; the manager reports that, not an error.
+        XCTAssertNotEqual(vm.helperManager.status, .enabled)
+    }
+
     func testAuthCallbackNotificationIsForwardedToBridge() async {
         let vm = makeViewModel()
         NotificationCenter.default.post(

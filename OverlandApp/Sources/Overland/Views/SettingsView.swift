@@ -164,7 +164,7 @@ public struct SettingsView: View {
     }
 
     private var helperStatusRow: some View {
-        HelperStatusRow(manager: viewModel.helperManager)
+        HelperStatusRow(manager: viewModel.helperManager, onUninstall: { await viewModel.uninstallHelper() })
     }
 
     private var privilegeHelp: String {
@@ -224,6 +224,9 @@ public struct SettingsView: View {
 /// Observes the helper manager directly so status changes re-render.
 struct HelperStatusRow: View {
     @ObservedObject var manager: HelperManager
+    var onUninstall: () async -> Void
+    @State private var confirmingUninstall = false
+    @State private var uninstalling = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -244,8 +247,9 @@ struct HelperStatusRow: View {
                     Button("Re-check") { manager.refresh() }
                         .controlSize(.small)
                 case .enabled:
-                    Button("Disable") { Task { await manager.disable() } }
+                    Button("Uninstall…") { confirmingUninstall = true }
                         .controlSize(.small)
+                        .disabled(uninstalling)
                 case .unsignedBuild, .notFound:
                     EmptyView()
                 }
@@ -257,5 +261,21 @@ struct HelperStatusRow: View {
             }
         }
         .onAppear { manager.refresh() }
+        .confirmationDialog(
+            "Uninstall the privileged helper?",
+            isPresented: $confirmingUninstall,
+            titleVisibility: .visible
+        ) {
+            Button("Uninstall", role: .destructive) {
+                uninstalling = true
+                Task {
+                    await onUninstall()
+                    uninstalling = false
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes Overland from Login Items & Extensions. If the VPN is connected it is disconnected first. Connecting will then show the administrator authorization dialog until the helper is enabled again. Trashing the app afterwards leaves nothing behind.")
+        }
     }
 }

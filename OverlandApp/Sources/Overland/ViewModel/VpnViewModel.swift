@@ -415,11 +415,33 @@ public final class VpnViewModel: ObservableObject {
     public func prepareForTermination(timeout: TimeInterval = 10) async {
         guard hasActiveSession else { return }
         appendLog(LogEntry(level: .info, message: "Quitting: disconnecting the VPN first"))
+        await disconnectAndWait(timeout: timeout)
+    }
+
+    /// Disconnect and wait (bounded) for gpclient to finish tearing down.
+    public func disconnectAndWait(timeout: TimeInterval = 10) async {
+        guard hasActiveSession else { return }
         disconnect()
         let deadline = Date().addingTimeInterval(timeout)
         while !state.isDisconnected, Date() < deadline {
             if case .failed = state { break }
             try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
+    /// Remove the privileged helper's background item. Disconnects first if
+    /// a tunnel is up (the helper owns it), then unregisters with launchd.
+    /// Until it is enabled again, connecting uses the administrator dialog.
+    public func uninstallHelper() async {
+        if hasActiveSession {
+            appendLog(LogEntry(level: .info, message: "Uninstalling the helper: disconnecting the VPN first"))
+            await disconnectAndWait()
+        }
+        await helperManager.disable()
+        if helperManager.status == .notRegistered {
+            appendLog(LogEntry(level: .info, message: "Privileged helper uninstalled; the administrator dialog will be used until it is enabled again"))
+        } else if let error = helperManager.lastError {
+            appendLog(LogEntry(level: .error, message: "Could not uninstall the helper: \(error)"))
         }
     }
 
