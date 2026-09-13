@@ -8,8 +8,6 @@ public enum NavigationTab: String, CaseIterable, Identifiable {
     case connection = "Connection"
     case gateways = "Gateways"
     case logs = "Activity Logs"
-    case settings = "Settings"
-    case about = "About"
 
     public var id: String { rawValue }
 
@@ -18,8 +16,6 @@ public enum NavigationTab: String, CaseIterable, Identifiable {
         case .connection: return "shield.lefthalf.filled"
         case .gateways: return "network"
         case .logs: return "list.bullet.rectangle"
-        case .settings: return "gearshape"
-        case .about: return "info.circle"
         }
     }
 }
@@ -256,10 +252,16 @@ public final class VpnViewModel: ObservableObject {
         }
     }
 
+    /// Forget the configured connection and return to first-run setup.
     public func resetProfile() {
+        if !profile.username.isEmpty {
+            try? storage.deletePassword(profile.username)
+        }
         profile = .default
         password = ""
         saveProfile()
+        storage.defaults.removeObject(forKey: setupDoneKey)
+        needsSetup = true
     }
 
     // MARK: - Bridge events

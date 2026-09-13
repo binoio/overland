@@ -27,6 +27,10 @@ struct OverlandApp: App {
         .windowStyle(.automatic)
         .defaultSize(width: 820, height: 560)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Overland") { openWindow(id: "about") }
+            }
+
             CommandGroup(replacing: .newItem) {
                 Button(viewModel.state.isConnected || viewModel.state.isConnecting ? "Disconnect VPN" : "Connect VPN") {
                     viewModel.toggleConnection()
@@ -39,6 +43,14 @@ struct OverlandApp: App {
                 }
                 .keyboardShortcut("r", modifiers: [.command])
                 .disabled(viewModel.isDiscoveringGateways || viewModel.state.isBusy)
+            }
+
+            CommandGroup(before: .windowList) {
+                Button("Gateways") { openWindow(id: "gateways") }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("Activity Logs") { openWindow(id: "logs") }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                Divider()
             }
 
             CommandGroup(replacing: .help) {
@@ -54,11 +66,36 @@ struct OverlandApp: App {
             SettingsView(viewModel: viewModel)
         }
 
+        Window("About Overland", id: "about") {
+            AboutView(viewModel: viewModel)
+                .frame(width: 440, height: 400)
+        }
+        .windowResizability(.contentSize)
+
+        Window("Gateways", id: "gateways") {
+            GatewayListView(viewModel: viewModel)
+                .frame(minWidth: 520, minHeight: 360)
+        }
+        .defaultSize(width: 600, height: 420)
+
+        Window("Activity Logs", id: "logs") {
+            LogsView(viewModel: viewModel)
+                .frame(minWidth: 640, minHeight: 360)
+        }
+        .defaultSize(width: 820, height: 480)
+
         MenuBarExtra {
-            MenuBarExtraView(viewModel: viewModel) {
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: "main")
-            }
+            MenuBarExtraView(
+                viewModel: viewModel,
+                onOpenMainWindow: {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "main")
+                },
+                onOpenWindow: { id in
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: id)
+                }
+            )
         } label: {
             menuBarLabel
         }

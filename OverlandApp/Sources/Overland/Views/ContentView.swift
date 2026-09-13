@@ -26,18 +26,15 @@ public struct ContentView: View {
         }
         .frame(minWidth: 760, minHeight: 520)
         .toolbar {
-            ToolbarItem(placement: .status) {
-                HStack(spacing: 8) {
-                    if viewModel.useMockBridge {
-                        Text("MOCK")
-                            .font(.system(size: 10, weight: .bold))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.2))
-                            .clipShape(Capsule())
-                            .help("Mock bridge is enabled in Settings ▸ Developer")
-                    }
-                    StatusBadgeView(state: viewModel.state)
+            if viewModel.useMockBridge {
+                ToolbarItem(placement: .status) {
+                    Text("MOCK")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.2))
+                        .clipShape(Capsule())
+                        .help("Mock backend is enabled in Settings ▸ Backend ▸ Advanced")
                 }
             }
 
@@ -103,10 +100,6 @@ public struct ContentView: View {
             GatewayListView(viewModel: viewModel)
         case .logs:
             LogsView(viewModel: viewModel)
-        case .settings:
-            SettingsView(viewModel: viewModel)
-        case .about:
-            AboutView(viewModel: viewModel)
         }
     }
 

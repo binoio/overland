@@ -41,55 +41,107 @@ public struct ConnectionDetailView: View {
         }
     }
 
-    // MARK: Idle
+    // MARK: Idle (same structure as Connected, unpopulated)
 
     private var idleCard: some View {
         VStack(spacing: 20) {
-            Image(systemName: "shield")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
+            idleHeader
+            HStack(spacing: 12) {
+                placeholderTile(title: "Received", icon: "arrow.down", color: .green)
+                placeholderTile(title: "Sent", icon: "arrow.up", color: .teal)
+            }
+            idleDetails
+        }
+    }
 
-            VStack(spacing: 4) {
-                Text("Not connected")
-                    .font(.title2.weight(.bold))
-                Text(summaryLine)
-                    .font(.subheadline)
+    private var idleHeader: some View {
+        HStack(alignment: .center, spacing: 16) {
+            ZStack {
+                Circle().fill(Color.secondary.opacity(0.10)).frame(width: 64, height: 64)
+                Image(systemName: "shield")
+                    .font(.system(size: 30))
                     .foregroundStyle(.secondary)
             }
-
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Not connected")
+                    .font(.title2.weight(.bold))
+                Text(viewModel.profile.portal.isEmpty ? "No portal configured" : viewModel.profile.portal)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button("Change portal or sign-in…") { editing = true }
+                    .buttonStyle(.link)
+                    .font(.caption)
+                    .padding(.top, 2)
+            }
+            Spacer()
             Button {
                 viewModel.connect()
             } label: {
                 Text("Connect")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(minWidth: 180, minHeight: 36)
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(minWidth: 120, minHeight: 32)
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
             .disabled(viewModel.profile.portal.isEmpty)
-
-            Button("Change portal or sign-in…") { editing = true }
-                .buttonStyle(.link)
-                .font(.caption)
         }
-        .frame(maxWidth: .infinity)
-        .padding(28)
+        .padding(24)
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var summaryLine: String {
-        let portal = viewModel.profile.portal.isEmpty ? "No portal configured" : viewModel.profile.portal
-        let gateway = viewModel.gateways.first { $0.server == viewModel.profile.selectedGatewayServer }?.name
-            ?? viewModel.profile.selectedGatewayServer ?? "automatic gateway"
-        let method: String
-        switch viewModel.profile.authMethod {
-        case .browserSSO: method = "Single Sign-On"
-        case .credentials: method = viewModel.profile.username.isEmpty ? "password" : viewModel.profile.username
-        case .clientCertificate: method = "client certificate"
+    private func placeholderTile(title: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon).foregroundStyle(color.opacity(0.5))
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("—")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Text("—")
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            Rectangle()
+                .fill(Color.secondary.opacity(0.08))
+                .frame(height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
         }
-        return "\(portal) · \(gateway) · \(method)"
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var gatewayLabel: String {
+        viewModel.gateways.first { $0.server == viewModel.profile.selectedGatewayServer }?.name
+            ?? viewModel.profile.selectedGatewayServer ?? "Automatic"
+    }
+
+    private var signInLabel: String {
+        switch viewModel.profile.authMethod {
+        case .browserSSO: return "Single Sign-On"
+        case .credentials: return viewModel.profile.username.isEmpty ? "Username & password" : viewModel.profile.username
+        case .clientCertificate: return "Client certificate"
+        }
+    }
+
+    private var idleDetails: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            detailRow("Duration", "—")
+            Divider()
+            detailRow("Tunnel address", "—")
+            Divider()
+            detailRow("Gateway", gatewayLabel)
+            Divider()
+            detailRow("Portal", viewModel.profile.portal.isEmpty ? "—" : viewModel.profile.portal)
+            Divider()
+            detailRow("Sign in", signInLabel)
+        }
+        .padding(.horizontal, 16)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var editorSheet: some View {

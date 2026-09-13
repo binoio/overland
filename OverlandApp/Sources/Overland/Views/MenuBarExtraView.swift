@@ -5,10 +5,12 @@ import SwiftUI
 public struct MenuBarExtraView: View {
     @ObservedObject var viewModel: VpnViewModel
     public let onOpenMainWindow: () -> Void
+    public let onOpenWindow: (String) -> Void
 
-    public init(viewModel: VpnViewModel, onOpenMainWindow: @escaping () -> Void = {}) {
+    public init(viewModel: VpnViewModel, onOpenMainWindow: @escaping () -> Void = {}, onOpenWindow: @escaping (String) -> Void = { _ in }) {
         self.viewModel = viewModel
         self.onOpenMainWindow = onOpenMainWindow
+        self.onOpenWindow = onOpenWindow
     }
 
     public var body: some View {
@@ -25,14 +27,19 @@ public struct MenuBarExtraView: View {
 
             VStack(spacing: 2) {
                 menuRow("Open Overland", systemImage: "macwindow") { onOpenMainWindow() }
-                menuRow("Settings…", systemImage: "gearshape") {
-                    onOpenMainWindow()
-                    viewModel.selectedTab = .settings
+                menuRow("Activity Logs", systemImage: "list.bullet.rectangle") { onOpenWindow("logs") }
+                SettingsLink {
+                    HStack {
+                        Image(systemName: "gearshape").frame(width: 16)
+                        Text("Settings…")
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
                 }
-                menuRow("Activity Logs", systemImage: "list.bullet.rectangle") {
-                    onOpenMainWindow()
-                    viewModel.selectedTab = .logs
-                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .padding(.vertical, 3)
+                .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
                 Divider().padding(.vertical, 2)
                 menuRow("Quit Overland", systemImage: "power") { NSApplication.shared.terminate(nil) }
             }

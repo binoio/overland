@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 public struct SettingsView: View {
     @ObservedObject var viewModel: VpnViewModel
+    @State private var confirmingReset = false
 
     public var body: some View {
         TabView {
@@ -32,6 +33,12 @@ public struct SettingsView: View {
 
                 Toggle("Connect automatically when Overland starts", isOn: $viewModel.profile.autoConnect)
                     .onChange(of: viewModel.profile.autoConnect) { viewModel.saveProfile() }
+                    .disabled(viewModel.profile.portal.isEmpty)
+                if viewModel.profile.portal.isEmpty {
+                    Text("Configure a connection first.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
 
                 Toggle("Show only in the menu bar", isOn: Binding(
                     get: { viewModel.menuBarOnly },
@@ -51,8 +58,19 @@ public struct SettingsView: View {
             }
 
             Section {
-                Button("Run first-time setup again…") {
-                    viewModel.needsSetup = true
+                Button("Reset to Defaults…", role: .destructive) {
+                    confirmingReset = true
+                }
+                .confirmationDialog("Reset Overland to defaults?", isPresented: $confirmingReset, titleVisibility: .visible) {
+                    Button("Reset", role: .destructive) {
+                        Task {
+                            await viewModel.disconnectAndWait()
+                            viewModel.resetProfile()
+                        }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The configured connection — portal, sign-in method, gateways, saved password and options — will be removed and first-time setup will run again. If the VPN is connected it is disconnected first.")
                 }
             }
         }
@@ -64,8 +82,15 @@ public struct SettingsView: View {
     private var networkTab: some View {
         Form {
             Section("Tunnel") {
-                Toggle("Disable IPv6", isOn: $viewModel.profile.disableIPv6)
-                Toggle("Disable DTLS / ESP (force TCP/TLS)", isOn: $viewModel.profile.noDTLS)
+                // The profile keeps gpclient's negative flags; the UI shows the positive.
+                Toggle("Enable IPv6", isOn: Binding(
+                    get: { !viewModel.profile.disableIPv6 },
+                    set: { viewModel.profile.disableIPv6 = !$0 }
+                ))
+                Toggle("Enable DTLS / ESP (UDP transport; off forces TCP/TLS)", isOn: Binding(
+                    get: { !viewModel.profile.noDTLS },
+                    set: { viewModel.profile.noDTLS = !$0 }
+                ))
                 Toggle("Send HIP (Host Integrity) report", isOn: $viewModel.profile.enableHIP)
                 Toggle("Treat the portal address as a gateway", isOn: $viewModel.profile.asGateway)
             }
@@ -173,11 +198,6 @@ public struct SettingsView: View {
                 Text("Simulates sign-in, gateway discovery and a tunnel without a VPN server, a gpclient build, or privileges.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-
-                Button("Reset profile to defaults") {
-                    viewModel.resetProfile()
-                }
-                .foregroundStyle(.red)
             }
         }
         .formStyle(.grouped)
