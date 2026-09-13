@@ -25,7 +25,9 @@ NOTARY_PROFILE="${OVERLAND_NOTARY_PROFILE:-atmo-notary}"
 SPARKLE_ACCOUNT="Overland"
 
 VERSION=$(tr -d '[:space:]' < "${APP_DIR}/VERSION")
-TAG="v${VERSION}"
+# Prefixed: the repository carries GlobalProtect-openconnect's history and
+# its v* tags, so Overland's releases live in their own tag namespace.
+TAG="overland-v${VERSION}"
 APP="dist/Overland.app"
 ZIP="dist/Overland-${VERSION}.zip"
 NOTES_MD="ReleaseNotes/Overland-${VERSION}.md"
@@ -37,8 +39,8 @@ echo "==> Preflight for Overland ${VERSION}"
 if git rev-parse "$TAG" >/dev/null 2>&1; then
     echo "error: tag $TAG already exists" >&2; exit 1
 fi
-LATEST_TAG=$(git tag -l 'v*' | sort -V | tail -1)
-if [[ -n "$LATEST_TAG" && "$(print -l "$LATEST_TAG" "$TAG" | sort -V | tail -1)" != "$TAG" ]]; then
+LATEST_TAG=$(git tag -l 'overland-v*' | sed 's/^overland-//' | sort -V | tail -1 | sed 's/^/overland-/')
+if [[ -n "$LATEST_TAG" && "$(print -l "${LATEST_TAG#overland-}" "v${VERSION}" | sort -V | tail -1)" != "v${VERSION}" ]]; then
     echo "error: VERSION ($VERSION) is not newer than latest tag ($LATEST_TAG)" >&2; exit 1
 fi
 [[ -f "$NOTES_MD" ]] || { echo "error: $NOTES_MD missing" >&2; exit 1; }

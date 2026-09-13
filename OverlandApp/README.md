@@ -159,7 +159,8 @@ Overland ships auto-updates with Sparkle 2: an EdDSA-signed appcast at
    `ReleaseNotes/Overland-X.Y.Z.html` (embedded in the appcast)
 3. Commit, then run `zsh OverlandApp/Scripts/release.sh` — it builds gpclient
    and the app, signs everything, notarizes and staples, generates the
-   appcast, tags, publishes the GitHub release, and pushes the appcast
+   appcast, tags (`overland-vX.Y.Z` — the repository also carries upstream's
+   `vX.Y.Z` tags), publishes the GitHub release, and pushes the appcast
 
 One-time prerequisites: the Developer ID identity and the Sparkle EdDSA
 private key (`generate_keys --account Overland`) in the login Keychain, a
