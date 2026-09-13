@@ -3,7 +3,9 @@ import SwiftUI
 
 public struct ContentView: View {
     @ObservedObject var viewModel: VpnViewModel
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    // Collapsed on first open; the toolbar's sidebar button (or ⌃⌘S) reveals
+    // it, and SwiftUI remembers the choice for later launches.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
 
     public init(viewModel: VpnViewModel) {
         self.viewModel = viewModel
