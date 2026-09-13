@@ -29,7 +29,12 @@ var products: [Product] = [
     .executable(name: "overland-exec", targets: ["overland-exec"])
 ]
 
+var dependencies: [Package.Dependency] = []
+
 #if os(macOS)
+// Sparkle ships as a binary xcframework, so it is only declared where it can resolve.
+dependencies.append(.package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"))
+
 targets += [
     // XPC contract + tunnel management shared by the app and the helper.
     .target(
@@ -45,13 +50,21 @@ targets += [
     ),
     .executableTarget(
         name: "Overland",
-        dependencies: ["OverlandCore", "OverlandHelperShared"],
+        dependencies: [
+            "OverlandCore",
+            "OverlandHelperShared",
+            .product(name: "Sparkle", package: "Sparkle")
+        ],
         path: "Sources/Overland",
         resources: [
             .process("Resources")
         ],
         swiftSettings: [
             .enableExperimentalFeature("IsolatedDeinit")
+        ],
+        linkerSettings: [
+            // Sparkle.framework is embedded in Contents/Frameworks by Scripts/bundle.sh
+            .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
         ]
     ),
     .testTarget(
@@ -70,5 +83,6 @@ let package = Package(
         .macOS(.v14)
     ],
     products: products,
+    dependencies: dependencies,
     targets: targets
 )

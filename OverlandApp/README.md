@@ -148,6 +148,24 @@ helper's background item; after that, trashing the app leaves nothing behind.
 also deletes the bundle, Application Support folder, preferences and saved
 passwords.
 
+## Releasing
+
+Overland ships auto-updates with Sparkle 2: an EdDSA-signed appcast at
+`docs/appcast.xml` is served from the bino.io/overland GitHub Pages site
+(`https://bino.io/overland/appcast.xml`) and the zips live on GitHub Releases.
+
+1. Bump `OverlandApp/VERSION`
+2. Write `ReleaseNotes/Overland-X.Y.Z.md` (GitHub release body) and
+   `ReleaseNotes/Overland-X.Y.Z.html` (embedded in the appcast)
+3. Commit, then run `zsh OverlandApp/Scripts/release.sh` — it builds gpclient
+   and the app, signs everything, notarizes and staples, generates the
+   appcast, tags, publishes the GitHub release, and pushes the appcast
+
+One-time prerequisites: the Developer ID identity and the Sparkle EdDSA
+private key (`generate_keys --account Overland`) in the login Keychain, a
+notarytool keychain profile (`atmo-notary` by default, or
+`OVERLAND_NOTARY_PROFILE`), and an authenticated `gh`.
+
 ## Signing and notarizing
 
 ```zsh

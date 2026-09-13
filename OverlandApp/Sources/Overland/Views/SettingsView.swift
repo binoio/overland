@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 
 public struct SettingsView: View {
     @ObservedObject var viewModel: VpnViewModel
+    /// Sparkle's controls, injected by the app so previews/tests need no updater.
+    var updatesSection: AnyView? = nil
     @State private var confirmingReset = false
 
     public var body: some View {
@@ -47,6 +49,10 @@ public struct SettingsView: View {
                 Text("Hides the Dock icon. Open the window any time from the menu bar item.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+
+            if let updatesSection {
+                updatesSection
             }
 
             Section("Credentials") {

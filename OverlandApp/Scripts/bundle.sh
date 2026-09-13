@@ -43,6 +43,15 @@ chmod +x "${MACOS_DIR}/Overland"
 # Signal-reset exec shim used by the privileged wrapper (see Sources/overland-exec).
 cp "${BIN_PATH}/overland-exec" "${MACOS_DIR}/overland-exec"
 chmod +x "${MACOS_DIR}/overland-exec"
+# Sparkle.framework (the executable links it via @rpath/../Frameworks).
+SPARKLE_FRAMEWORK=$(find "${APP_DIR}/.build" -type d -name "Sparkle.framework" -path "*artifacts*" -not -path "*dSYM*" 2>/dev/null | head -1)
+if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
+    echo "error: Sparkle.framework not found under OverlandApp/.build; run 'swift build --package-path OverlandApp' first" >&2
+    exit 1
+fi
+# ditto preserves the framework's Versions symlink structure; cp -R would not
+ditto "$SPARKLE_FRAMEWORK" "${FRAMEWORKS_DIR}/Sparkle.framework"
+
 # Privileged helper daemon + its launchd plist (registered via SMAppService).
 cp "${BIN_PATH}/OverlandHelper" "${MACOS_DIR}/OverlandHelper"
 chmod +x "${MACOS_DIR}/OverlandHelper"
@@ -59,6 +68,14 @@ cp "${APP_DIR}/Support/Info.plist" "${CONTENTS}/Info.plist"
 VERSION="${APP_VERSION:-$(tr -d '[:space:]' < "${APP_DIR}/VERSION")}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${CONTENTS}/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "${CONTENTS}/Info.plist"
+
+# Sparkle update feed (served from the bino.io/overland GitHub Pages site) and EdDSA public key.
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://bino.io/overland/appcast.xml}"
+SPARKLE_ED_PUBLIC_KEY="${SPARKLE_ED_PUBLIC_KEY:-OQFwn9WVxQKkQPZe3YR8ZQuxspf2RfaEGaUZgkmeGvY=}"
+/usr/libexec/PlistBuddy -c "Delete :SUFeedURL" "${CONTENTS}/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :SUFeedURL string ${SPARKLE_FEED_URL}" "${CONTENTS}/Info.plist"
+/usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" "${CONTENTS}/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :SUPublicEDKey string ${SPARKLE_ED_PUBLIC_KEY}" "${CONTENTS}/Info.plist"
 echo "APPL????" > "${CONTENTS}/PkgInfo"
 
 # ---------------------------------------------------------------------------
@@ -165,6 +182,13 @@ if [[ -n "$IDENTITY" ]]; then
     echo "==> Signing with: ${IDENTITY}"
     SIGN=(codesign --force --options runtime --timestamp --sign "$IDENTITY")
     for lib in "${FRAMEWORKS_DIR}"/*.dylib(N); do "${SIGN[@]}" "$lib" >/dev/null; done
+    # Sparkle's helpers are signed individually, inside-out; the XPC services keep their entitlements.
+    SF="${FRAMEWORKS_DIR}/Sparkle.framework"
+    "${SIGN[@]}" "$SF/Versions/B/Autoupdate" >/dev/null
+    "${SIGN[@]}" "$SF/Versions/B/Updater.app" >/dev/null
+    "${SIGN[@]}" --preserve-metadata=entitlements "$SF/Versions/B/XPCServices/Installer.xpc" >/dev/null
+    "${SIGN[@]}" --preserve-metadata=entitlements "$SF/Versions/B/XPCServices/Downloader.xpc" >/dev/null
+    "${SIGN[@]}" "$SF" >/dev/null
     for helper in gpclient gpauth overland-exec; do
         [[ -x "${MACOS_DIR}/${helper}" ]] && "${SIGN[@]}" "${MACOS_DIR}/${helper}" >/dev/null
     done

@@ -4,7 +4,7 @@ import AppKit
 
 @main
 struct OverlandApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @NSApplicationDelegateAdaptor(SparkleAppDelegate.self) private var appDelegate
     @StateObject private var viewModel = VpnViewModel.shared
     @Environment(\.openWindow) private var openWindow
 
@@ -29,6 +29,9 @@ struct OverlandApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Overland") { openWindow(id: "about") }
+            }
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(viewModel: appDelegate.updaterViewModel)
             }
 
             CommandGroup(replacing: .newItem) {
@@ -63,7 +66,7 @@ struct OverlandApp: App {
         }
 
         Settings {
-            SettingsView(viewModel: viewModel)
+            SettingsView(viewModel: viewModel, updatesSection: AnyView(UpdatesSectionView(viewModel: appDelegate.updaterViewModel)))
         }
 
         Window("About Overland", id: "about") {

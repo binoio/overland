@@ -3,7 +3,7 @@ import Foundation
 import AppKit
 
 @MainActor
-public final class AppDelegate: NSObject, NSApplicationDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
         // Menu-bar-only mode: no Dock icon, and the window stays closed until

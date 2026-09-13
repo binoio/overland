@@ -9,7 +9,7 @@
 #
 # Usage: zsh OverlandApp/Scripts/notarize.sh
 #   OVERLAND_SIGN_IDENTITY="Developer ID Application: Name (TEAMID)"  (required)
-#   OVERLAND_NOTARY_PROFILE=overland-notary                       (default)
+#   OVERLAND_NOTARY_PROFILE=atmo-notary                           (default; same developer account)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -17,7 +17,8 @@ APP_DIR="${REPO_ROOT}/OverlandApp"
 APP="${REPO_ROOT}/dist/Overland.app"
 ENTITLEMENTS="${APP_DIR}/Support/Overland.entitlements"
 IDENTITY="${OVERLAND_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)}"
-NOTARY_PROFILE="${OVERLAND_NOTARY_PROFILE:-overland-notary}"
+# notarytool keychain profile; the Atmo profile is the same Apple developer account.
+NOTARY_PROFILE="${OVERLAND_NOTARY_PROFILE:-atmo-notary}"
 
 [[ -d "$APP" ]] || { echo "error: ${APP} missing; run Scripts/bundle.sh first" >&2; exit 1; }
 [[ -n "$IDENTITY" ]] || { echo "error: set OVERLAND_SIGN_IDENTITY to your Developer ID Application identity" >&2; exit 1; }
@@ -30,6 +31,14 @@ echo "==> Signing inside-out (never --deep for the final pass)"
 for lib in "${APP}/Contents/Frameworks"/*.dylib(N); do
     codesign --force --options runtime --timestamp --sign "$IDENTITY" "$lib"
 done
+SF="${APP}/Contents/Frameworks/Sparkle.framework"
+if [[ -d "$SF" ]]; then
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SF/Versions/B/Autoupdate"
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SF/Versions/B/Updater.app"
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" --preserve-metadata=entitlements "$SF/Versions/B/XPCServices/Installer.xpc"
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" --preserve-metadata=entitlements "$SF/Versions/B/XPCServices/Downloader.xpc"
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$SF"
+fi
 for helper in gpclient gpauth overland-exec; do
     if [[ -x "${APP}/Contents/MacOS/${helper}" ]]; then
         codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}/Contents/MacOS/${helper}"
