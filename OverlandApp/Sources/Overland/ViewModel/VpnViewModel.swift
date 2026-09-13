@@ -85,6 +85,20 @@ public final class VpnViewModel: ObservableObject {
     @Published public var manualAuthURL: String?
     @Published public var resolvedGpclientPath: String?
     @Published public var resolvedGpauthPath: String?
+    /// Progress through a connection attempt; nil when not connecting.
+    @Published public var connectPhase: ConnectPhase?
+    /// gpauth's local sign-in page while it waits for the browser.
+    @Published public var signInURL: String?
+    /// The last failure, classified for display.
+    @Published public var failure: ConnectionFailure?
+    /// Per-second throughput samples (bytes/s) while connected, newest last.
+    @Published public var throughputHistory: [ThroughputSample] = []
+    /// Run without a Dock icon; the window opens from the menu bar.
+    @Published public var menuBarOnly: Bool
+    /// `gpclient --version` output, for About.
+    @Published public var backendVersion: String?
+    /// First run: no portal has been saved yet.
+    @Published public var needsSetup: Bool
     @Published public var resolvedVpncScriptPath: String?
 
     public var gateways: [Gateway] {
@@ -107,6 +121,10 @@ public final class VpnViewModel: ObservableObject {
     private let profileDefaultsKey = "Overland.ConnectionProfile"
     private let useMockKey = "Overland.UseMockBridge"
     private let customBinaryKey = "Overland.CustomBinaryPath"
+    private let menuBarOnlyKey = "Overland.MenuBarOnly"
+    private let setupDoneKey = "Overland.SetupCompleted"
+    private var lastCounters: InterfaceStatsReader.Counters?
+    private var lastSampleAt: Date?
 
     public init(
         bridge: BridgeServiceProtocol? = nil,
@@ -134,6 +152,9 @@ public final class VpnViewModel: ObservableObject {
 
         let customPath = defaults.string(forKey: customBinaryKey) ?? ""
         self.customBinaryPath = customPath
+        self.menuBarOnly = defaults.bool(forKey: menuBarOnlyKey)
+        let savedProfile = defaults.data(forKey: profileDefaultsKey) != nil
+        self.needsSetup = !(defaults.bool(forKey: setupDoneKey) || savedProfile)
         self.liveBridge = liveBridge ?? GpclientBridgeService(
             customGpclientPath: customPath.isEmpty ? nil : customPath,
             privilegedRunnerFactory: helperManager.privilegedRunnerFactory(),
@@ -157,6 +178,32 @@ public final class VpnViewModel: ObservableObject {
         subscribeToBridge()
         observeAuthCallbacks()
         refreshResolvedPaths()
+        fetchBackendVersion()
+    }
+
+    public func completeSetup() {
+        needsSetup = false
+        storage.defaults.set(true, forKey: setupDoneKey)
+        saveProfile()
+    }
+
+    public func setMenuBarOnly(_ enabled: Bool) {
+        menuBarOnly = enabled
+        storage.defaults.set(enabled, forKey: menuBarOnlyKey)
+        NSApp.setActivationPolicy(enabled ? .accessory : .regular)
+        if !enabled {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private func fetchBackendVersion() {
+        Task {
+            guard let path = await liveBridge.resolvedGpclientPath() else { return }
+            let result = try? await ProcessRunner().run(CommandLine(executable: path, arguments: ["--version"]))
+            if let out = result?.stdout.trimmingCharacters(in: .whitespacesAndNewlines), !out.isEmpty {
+                self.backendVersion = out.replacingOccurrences(of: "gpclient ", with: "")
+            }
+        }
     }
 
     isolated deinit {
@@ -240,6 +287,16 @@ public final class VpnViewModel: ObservableObject {
             mergeGateways(discovered)
         case .manualAuthURL(let url):
             manualAuthURL = url
+        case .signInURL(let url):
+            signInURL = url
+        case .phase(let phase):
+            connectPhase = phase
+        }
+    }
+
+    public func reopenSignInPage() {
+        if let url = signInURL.flatMap(URL.init(string:)) {
+            NSWorkspace.shared.open(url)
         }
     }
 
@@ -266,7 +323,10 @@ public final class VpnViewModel: ObservableObject {
         switch newState {
         case .connected(let details):
             statusMessage = nil
+            failure = nil
             manualAuthURL = nil
+            signInURL = nil
+            connectPhase = nil
             if !wasConnected {
                 startMetricsTimer(interface: details.interfaceName, connectedAt: details.connectedAt)
             }
@@ -274,12 +334,20 @@ public final class VpnViewModel: ObservableObject {
             stopMetricsTimer()
             metrics = SessionMetrics()
             manualAuthURL = nil
+            signInURL = nil
+            connectPhase = nil
         case .failed(let msg):
             stopMetricsTimer()
             metrics = SessionMetrics()
             statusMessage = msg
+            failure = ConnectionFailure.classify(msg)
             manualAuthURL = nil
-        case .connecting, .disconnecting:
+            signInURL = nil
+            connectPhase = nil
+        case .connecting:
+            failure = nil
+            if connectPhase == nil { connectPhase = .signIn }
+        case .disconnecting:
             break
         }
     }
@@ -297,6 +365,8 @@ public final class VpnViewModel: ObservableObject {
     public func connect() {
         guard !state.isBusy else { return }
         statusMessage = nil
+        failure = nil
+        connectPhase = GpclientCommandBuilder.needsBrowserAuth(profile) ? .signIn : (helperManager.isUsable ? .tunnel : .authorize)
         saveProfile()
 
         let profile = self.profile
@@ -308,7 +378,7 @@ public final class VpnViewModel: ObservableObject {
                 self.statusMessage = error.localizedDescription
                 self.appendLog(LogEntry(level: .error, message: "Connection error: \(error.localizedDescription)"))
                 if !self.state.isConnected {
-                    self.state = .failed(message: error.localizedDescription)
+                    self.updateState(.failed(message: error.localizedDescription))
                 }
             }
         }
@@ -369,6 +439,14 @@ public final class VpnViewModel: ObservableObject {
 
     public func clearLogs() {
         logs.removeAll()
+    }
+
+    public func dismissFailure() {
+        failure = nil
+        statusMessage = nil
+        if case .failed = state {
+            state = .disconnected
+        }
     }
 
     public var logsAsText: String {
@@ -475,6 +553,9 @@ public final class VpnViewModel: ObservableObject {
     private func startMetricsTimer(interface: String?, connectedAt: Date) {
         metricsTimer?.invalidate()
         baselineCounters = interface.flatMap { statsReader.counters(for: $0) }
+        lastCounters = baselineCounters
+        lastSampleAt = Date()
+        throughputHistory = []
         metrics = SessionMetrics()
         refreshMetrics(interface: interface, connectedAt: connectedAt)
 
@@ -496,6 +577,22 @@ public final class VpnViewModel: ObservableObject {
             updated.bytesSent = counters.bytesOut &- base.bytesOut
             updated.packetsReceived = counters.packetsIn &- base.packetsIn
             updated.packetsSent = counters.packetsOut &- base.packetsOut
+
+            let now = Date()
+            if let last = lastCounters, let lastAt = lastSampleAt {
+                let seconds = max(now.timeIntervalSince(lastAt), 0.001)
+                let sample = ThroughputSample(
+                    time: now,
+                    bytesInPerSecond: Double(counters.bytesIn &- last.bytesIn) / seconds,
+                    bytesOutPerSecond: Double(counters.bytesOut &- last.bytesOut) / seconds
+                )
+                throughputHistory.append(sample)
+                if throughputHistory.count > 120 {
+                    throughputHistory.removeFirst(throughputHistory.count - 120)
+                }
+            }
+            lastCounters = counters
+            lastSampleAt = now
         }
         metrics = updated
     }
@@ -504,5 +601,15 @@ public final class VpnViewModel: ObservableObject {
         metricsTimer?.invalidate()
         metricsTimer = nil
         baselineCounters = nil
+        lastCounters = nil
+        lastSampleAt = nil
+        throughputHistory = []
     }
+}
+
+public struct ThroughputSample: Identifiable, Equatable, Sendable {
+    public var id: Date { time }
+    public var time: Date
+    public var bytesInPerSecond: Double
+    public var bytesOutPerSecond: Double
 }

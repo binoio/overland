@@ -5,7 +5,7 @@ final class ConnectionProfileTests: XCTestCase {
     func testDefaultProfile() {
         let profile = ConnectionProfile.default
         XCTAssertEqual(profile.portal, "")
-        XCTAssertEqual(profile.authMethod, .credentials)
+        XCTAssertEqual(profile.authMethod, .browserSSO)
         XCTAssertEqual(profile.privilegeMode, .helper)
         XCTAssertEqual(profile.browserMode, .systemDefault)
         XCTAssertEqual(profile.reconnectTimeout, 300)

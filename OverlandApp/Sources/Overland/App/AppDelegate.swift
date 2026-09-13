@@ -6,6 +6,14 @@ import AppKit
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        // Menu-bar-only mode: no Dock icon, and the window stays closed until
+        // it is asked for from the menu bar.
+        if VpnViewModel.shared.menuBarOnly, !VpnViewModel.shared.needsSetup {
+            NSApp.setActivationPolicy(.accessory)
+            for window in NSApp.windows where window.canBecomeMain {
+                window.orderOut(nil)
+            }
+        }
     }
 
     /// A connected tunnel is torn down before quitting. The reply is deferred

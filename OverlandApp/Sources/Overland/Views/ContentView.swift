@@ -10,6 +10,15 @@ public struct ContentView: View {
     }
 
     public var body: some View {
+        if viewModel.needsSetup {
+            SetupView(viewModel: viewModel)
+                .frame(minWidth: 620, minHeight: 560)
+        } else {
+            mainSplit
+        }
+    }
+
+    private var mainSplit: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebarContent
         } detail: {
@@ -37,12 +46,12 @@ public struct ContentView: View {
                     viewModel.toggleConnection()
                 }) {
                     Label(
-                        viewModel.state.isConnected || viewModel.state.isConnecting ? "Disconnect" : "Connect",
-                        systemImage: viewModel.state.isConnected ? "stop.circle" : "play.circle"
+                        viewModel.state.isConnected ? "Disconnect" : (viewModel.state.isConnecting ? "Cancel" : "Connect"),
+                        systemImage: viewModel.state.isConnected || viewModel.state.isConnecting ? "stop.circle" : "play.circle"
                     )
                 }
-                .tint(viewModel.state.isConnected ? .red : .accentColor)
-                .disabled(viewModel.state == .disconnecting)
+                .tint(viewModel.state.isConnected || viewModel.state.isConnecting ? .red : .accentColor)
+                .disabled(viewModel.state == .disconnecting || (viewModel.state.isDisconnected && viewModel.profile.portal.isEmpty))
             }
         }
         .onAppear {
@@ -97,7 +106,7 @@ public struct ContentView: View {
         case .settings:
             SettingsView(viewModel: viewModel)
         case .about:
-            AboutView()
+            AboutView(viewModel: viewModel)
         }
     }
 

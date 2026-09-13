@@ -55,7 +55,8 @@ fi
 cp "${APP_DIR}/Sources/Overland/Resources/AppIcon.icns" "${RESOURCES_DIR}/AppIcon.icns"
 
 cp "${APP_DIR}/Support/Info.plist" "${CONTENTS}/Info.plist"
-VERSION="${APP_VERSION:-$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)}"
+# App version from OverlandApp/VERSION (the gpclient version is shown at runtime).
+VERSION="${APP_VERSION:-$(tr -d '[:space:]' < "${APP_DIR}/VERSION")}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${CONTENTS}/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" "${CONTENTS}/Info.plist"
 echo "APPL????" > "${CONTENTS}/PkgInfo"

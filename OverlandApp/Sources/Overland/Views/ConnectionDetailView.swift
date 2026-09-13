@@ -3,102 +3,258 @@ import SwiftUI
 
 public struct ConnectionDetailView: View {
     @ObservedObject var viewModel: VpnViewModel
+    @State private var editing = false
 
     public var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                heroConnectionCard
+                switch viewModel.state {
+                case .connected(let details):
+                    connectedHeader(details)
+                    throughputSection
+                    detailsSection(details)
+                case .connecting(let status):
+                    connectingCard(status: status)
+                case .disconnecting:
+                    busyCard(title: "Disconnecting…")
+                case .disconnected, .failed:
+                    if let failure = viewModel.failure {
+                        FailureCard(
+                            failure: failure,
+                            onRetry: { viewModel.connect() },
+                            onShowLogs: { viewModel.selectedTab = .logs },
+                            onDismiss: { viewModel.dismissFailure() }
+                        )
+                    }
+                    idleCard
+                }
 
                 if let url = viewModel.manualAuthURL {
                     manualAuthBanner(url: url)
                 }
-
-                if case .connected(let details) = viewModel.state {
-                    connectedMetricsSection(details: details)
-                }
-
-                if !viewModel.state.isConnected {
-                    configurationSection
-                }
             }
             .padding(24)
-            .frame(maxWidth: 800)
+            .frame(maxWidth: 760)
+        }
+        .sheet(isPresented: $editing) {
+            editorSheet
         }
     }
 
-    private var heroConnectionCard: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(statusGlowColor.opacity(0.12))
-                    .frame(width: 96, height: 96)
+    // MARK: Idle
 
-                Image(systemName: statusIconName)
-                    .font(.system(size: 44))
-                    .foregroundStyle(statusGlowColor)
-            }
-            .padding(.top, 8)
+    private var idleCard: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "shield")
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
 
             VStack(spacing: 4) {
-                Text(viewModel.state.title)
+                Text("Not connected")
                     .font(.title2.weight(.bold))
-                    .multilineTextAlignment(.center)
-
-                if case .connected(let details) = viewModel.state {
-                    Text("Portal: \(details.portal)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    SessionTimerView(
-                        expiresAt: details.sessionExpiresAt,
-                        allowExtend: false
-                    )
-                    .padding(.top, 4)
-                } else if case .failed(let message) = viewModel.state {
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                        .textSelection(.enabled)
-                } else if let message = viewModel.statusMessage {
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                        .textSelection(.enabled)
-                } else {
-                    Text("Secure remote access powered by OpenConnect")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
+                Text(summaryLine)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
 
-            Button(action: {
-                viewModel.toggleConnection()
-            }) {
-                HStack(spacing: 8) {
-                    if viewModel.state.isBusy {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-
-                    Text(buttonTitle)
-                        .font(.system(size: 15, weight: .semibold))
-                }
-                .frame(minWidth: 160, minHeight: 36)
+            Button {
+                viewModel.connect()
+            } label: {
+                Text("Connect")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(minWidth: 180, minHeight: 36)
             }
             .buttonStyle(.borderedProminent)
-            .tint(buttonTint)
-            .disabled(viewModel.state == .disconnecting || (!viewModel.state.isBusy && !viewModel.state.isConnected && viewModel.profile.portal.isEmpty))
             .keyboardShortcut(.defaultAction)
+            .disabled(viewModel.profile.portal.isEmpty)
+
+            Button("Change portal or sign-in…") { editing = true }
+                .buttonStyle(.link)
+                .font(.caption)
         }
         .frame(maxWidth: .infinity)
+        .padding(28)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var summaryLine: String {
+        let portal = viewModel.profile.portal.isEmpty ? "No portal configured" : viewModel.profile.portal
+        let gateway = viewModel.gateways.first { $0.server == viewModel.profile.selectedGatewayServer }?.name
+            ?? viewModel.profile.selectedGatewayServer ?? "automatic gateway"
+        let method: String
+        switch viewModel.profile.authMethod {
+        case .browserSSO: method = "Single Sign-On"
+        case .credentials: method = viewModel.profile.username.isEmpty ? "password" : viewModel.profile.username
+        case .clientCertificate: method = "client certificate"
+        }
+        return "\(portal) · \(gateway) · \(method)"
+    }
+
+    private var editorSheet: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Connection")
+                .font(.title2.weight(.bold))
+            ConnectionEditorView(viewModel: viewModel)
+            HStack {
+                Spacer()
+                Button("Done") {
+                    viewModel.saveProfile()
+                    editing = false
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
+
+    // MARK: Connecting
+
+    private func connectingCard(status: String) -> some View {
+        VStack(spacing: 8) {
+            Text("Connecting to \(viewModel.profile.portal)")
+                .font(.title3.weight(.semibold))
+                .padding(.bottom, 8)
+            ConnectProgressView(
+                phase: viewModel.connectPhase ?? .signIn,
+                status: status,
+                usesHelper: viewModel.profile.privilegeMode == .helper && viewModel.helperManager.isUsable,
+                signInURL: viewModel.signInURL,
+                onReopenSignIn: { viewModel.reopenSignInPage() },
+                onCancel: { viewModel.disconnect() }
+            )
+        }
+        .frame(maxWidth: .infinity)
+        .padding(28)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func busyCard(title: String) -> some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(title).font(.title3.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(28)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // MARK: Connected
+
+    private func connectedHeader(_ details: ConnectedDetails) -> some View {
+        HStack(alignment: .center, spacing: 16) {
+            ZStack {
+                Circle().fill(Color.green.opacity(0.12)).frame(width: 64, height: 64)
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 30))
+                    .foregroundStyle(.green)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Connected")
+                    .font(.title2.weight(.bold))
+                Text(details.gatewayName)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                SessionTimerView(expiresAt: details.sessionExpiresAt)
+                    .padding(.top, 2)
+            }
+            Spacer()
+            Button {
+                viewModel.disconnect()
+            } label: {
+                Text("Disconnect")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(minWidth: 120, minHeight: 32)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .keyboardShortcut(.defaultAction)
+        }
         .padding(24)
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
+
+    private var throughputSection: some View {
+        HStack(spacing: 12) {
+            throughputTile(title: "Received", total: viewModel.metrics.formattedBytesReceived,
+                           rate: viewModel.throughputHistory.last?.bytesInPerSecond ?? 0,
+                           keyPath: \.bytesInPerSecond, color: .green, icon: "arrow.down")
+            throughputTile(title: "Sent", total: viewModel.metrics.formattedBytesSent,
+                           rate: viewModel.throughputHistory.last?.bytesOutPerSecond ?? 0,
+                           keyPath: \.bytesOutPerSecond, color: .teal, icon: "arrow.up")
+        }
+    }
+
+    private func throughputTile(title: String, total: String, rate: Double, keyPath: KeyPath<ThroughputSample, Double>, color: Color, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: icon).foregroundStyle(color)
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text(Self.rateText(rate))
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Text(total)
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+            ThroughputSparkline(samples: viewModel.throughputHistory, keyPath: keyPath, color: color)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    static func rateText(_ bytesPerSecond: Double) -> String {
+        let f = ByteCountFormatter()
+        f.countStyle = .binary
+        f.allowsNonnumericFormatting = false
+        return f.string(fromByteCount: Int64(bytesPerSecond)) + "/s"
+    }
+
+    private func detailsSection(_ details: ConnectedDetails) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            detailRow("Duration", viewModel.metrics.formattedDuration)
+            Divider()
+            detailRow("Tunnel address", details.assignedIP ?? "Detecting…")
+            Divider()
+            detailRow("Gateway", details.gatewayServer)
+            Divider()
+            detailRow("Portal", details.portal)
+            if let iface = details.interfaceName {
+                Divider()
+                detailRow("Interface", iface)
+            }
+            if let cipher = details.cipher {
+                Divider()
+                detailRow("Transport", cipher)
+            }
+        }
+        .padding(.horizontal, 16)
+        .background(Color(NSColor.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .textSelection(.enabled)
+        }
+        .font(.callout)
+        .padding(.vertical, 8)
+    }
+
+    // MARK: Manual auth (remote browser mode)
 
     private func manualAuthBanner(url: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -123,268 +279,5 @@ public struct ConnectionDetailView: View {
         .padding(16)
         .background(Color.blue.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func connectedMetricsSection(details: ConnectedDetails) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Connection Information")
-                .font(.headline)
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                MetricCardView(
-                    title: "Tunnel Address",
-                    value: details.assignedIP ?? "Detecting…",
-                    iconName: "network",
-                    iconColor: .blue
-                )
-
-                MetricCardView(
-                    title: "Session Duration",
-                    value: viewModel.metrics.formattedDuration,
-                    iconName: "clock",
-                    iconColor: .indigo
-                )
-
-                MetricCardView(
-                    title: "Data Received",
-                    value: viewModel.metrics.formattedBytesReceived,
-                    iconName: "arrow.down.circle",
-                    iconColor: .green
-                )
-
-                MetricCardView(
-                    title: "Data Sent",
-                    value: viewModel.metrics.formattedBytesSent,
-                    iconName: "arrow.up.circle",
-                    iconColor: .teal
-                )
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                detailRow(icon: "server.rack", text: "Gateway: \(details.gatewayServer)")
-                if let iface = details.interfaceName {
-                    detailRow(icon: "point.3.connected.trianglepath.dotted", text: "Interface: \(iface)")
-                }
-                if let cipher = details.cipher {
-                    detailRow(icon: "lock.shield", text: "Transport: \(cipher)")
-                }
-                if !details.assignedDNS.isEmpty {
-                    detailRow(icon: "globe", text: "DNS: \(details.assignedDNS.joined(separator: ", "))")
-                }
-            }
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private func detailRow(icon: String, text: String) -> some View {
-        HStack {
-            Image(systemName: icon)
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-        }
-    }
-
-    private var configurationSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Gateway & Portal Settings")
-                .font(.headline)
-
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Portal Address")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField("e.g. vpn.company.com", text: $viewModel.profile.portal)
-                        .textFieldStyle(.roundedBorder)
-                        .disabled(viewModel.state.isBusy)
-                }
-
-                HStack(alignment: .bottom, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Gateway")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Picker("", selection: Binding(
-                            get: { viewModel.profile.selectedGatewayServer ?? "" },
-                            set: { viewModel.selectGateway($0.isEmpty ? nil : $0) }
-                        )) {
-                            Text("Automatic (portal priority order)").tag("")
-                            ForEach(viewModel.gateways) { gw in
-                                Text(gw.displayName).tag(gw.server)
-                            }
-                        }
-                        .labelsHidden()
-                    }
-
-                    Button(action: {
-                        viewModel.refreshGateways()
-                    }) {
-                        if viewModel.isDiscoveringGateways {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Label("Discover", systemImage: "arrow.clockwise")
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(viewModel.isDiscoveringGateways || viewModel.state.isBusy || viewModel.profile.portal.isEmpty)
-                    .help("Log in to the portal and list its gateways without opening a tunnel")
-                }
-            }
-
-            Divider()
-                .padding(.vertical, 4)
-
-            Text("Authentication")
-                .font(.headline)
-
-            Picker("Method", selection: $viewModel.profile.authMethod) {
-                ForEach(AuthMethod.allCases, id: \.self) { method in
-                    Text(method.rawValue).tag(method)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            switch viewModel.profile.authMethod {
-            case .credentials:
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Username")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Username", text: $viewModel.profile.username)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Password")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        SecureField("Password", text: $viewModel.password)
-                            .textFieldStyle(.roundedBorder)
-                    }
-
-                    Toggle("Save password securely in macOS Keychain", isOn: $viewModel.rememberPassword)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Text("Portals that require a one-time code after the password are not yet supported in the app; use Single Sign-On or the gpclient CLI for those.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-
-            case .browserSSO:
-                VStack(alignment: .leading, spacing: 8) {
-                    Picker("Browser", selection: $viewModel.profile.browserMode) {
-                        ForEach(BrowserMode.allCases, id: \.self) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-
-                    HStack {
-                        Image(systemName: "safari")
-                            .font(.title3)
-                            .foregroundStyle(.blue)
-                        Text("gpclient serves the SAML page on localhost and opens it in the browser. When the identity provider finishes, macOS hands the globalprotectcallback: URL back to this app, which completes the login.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.blue.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-
-            case .clientCertificate:
-                VStack(alignment: .leading, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Username (optional)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextField("Username", text: $viewModel.profile.username)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    pathField(title: "Client Certificate (.pem / .p12)", placeholder: "/path/to/cert.pem", binding: Binding(
-                        get: { viewModel.profile.certificatePath ?? "" },
-                        set: { viewModel.profile.certificatePath = $0.isEmpty ? nil : $0 }
-                    ))
-                    pathField(title: "Private Key (.pem, optional for .p12)", placeholder: "/path/to/key.pem", binding: Binding(
-                        get: { viewModel.profile.sslKeyPath ?? "" },
-                        set: { viewModel.profile.sslKeyPath = $0.isEmpty ? nil : $0 }
-                    ))
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .onChange(of: viewModel.profile.authMethod) { viewModel.saveProfile() }
-        .onChange(of: viewModel.profile.browserMode) { viewModel.saveProfile() }
-    }
-
-    private func pathField(title: String, placeholder: String, binding: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack {
-                TextField(placeholder, text: binding)
-                    .textFieldStyle(.roundedBorder)
-                Button("Browse…") {
-                    let panel = NSOpenPanel()
-                    panel.canChooseFiles = true
-                    panel.canChooseDirectories = false
-                    panel.allowsMultipleSelection = false
-                    if panel.runModal() == .OK, let url = panel.url {
-                        binding.wrappedValue = url.path
-                    }
-                }
-            }
-        }
-    }
-
-    private var statusIconName: String {
-        switch viewModel.state {
-        case .connected: return "checkmark.shield.fill"
-        case .connecting: return "shield.lefthalf.filled"
-        case .disconnecting: return "shield"
-        case .disconnected: return "shield"
-        case .failed: return "exclamationmark.shield.fill"
-        }
-    }
-
-    private var statusGlowColor: Color {
-        switch viewModel.state {
-        case .connected: return .green
-        case .connecting: return .orange
-        case .disconnecting: return .yellow
-        case .disconnected: return .secondary
-        case .failed: return .red
-        }
-    }
-
-    private var buttonTitle: String {
-        switch viewModel.state {
-        case .connected: return "Disconnect"
-        case .connecting: return "Cancel"
-        case .disconnecting: return "Disconnecting…"
-        case .disconnected, .failed: return "Connect"
-        }
-    }
-
-    private var buttonTint: Color {
-        switch viewModel.state {
-        case .connected, .connecting: return .red
-        default: return .accentColor
-        }
     }
 }

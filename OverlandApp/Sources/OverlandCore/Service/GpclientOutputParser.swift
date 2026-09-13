@@ -15,6 +15,8 @@ public enum GpclientEvent: Equatable, Sendable {
     case gatewaySelected(name: String, server: String)
     case browserLaunched
     case manualAuthURL(String)
+    /// gpauth's local sign-in page (`auth server started at: <url>`).
+    case signInURL(String)
     case awaitingBrowser
     case authDataReceived
     case tunnelConnected
@@ -183,6 +185,12 @@ public struct GpclientOutputParser: Sendable {
 
         if message.hasPrefix("WARNING:") {
             return [.sessionWarning(String(message.dropFirst("WARNING:".count)).trimmingCharacters(in: .whitespaces))]
+        }
+
+        if message.hasPrefix("auth server started at: "),
+           let m = Self.manualURLRegex.firstMatch(in: message, range: range),
+           let urlRange = Range(m.range(at: 1), in: message) {
+            return [.signInURL(String(message[urlRange]))]
         }
 
         if message.hasPrefix("Launching browser") || message.hasPrefix("Launching the default browser")

@@ -161,10 +161,15 @@ public struct GatewayListView: View {
 
             Spacer()
 
-            if let priority {
-                Text("priority \(priority)")
-                    .font(.system(size: 11, design: .monospaced))
+            if let priority, !isManual {
+                Text("#\(priority)")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
+                    .help("Portal priority \(priority) (lower connects first)")
             }
 
             if let onRemove {

@@ -2,6 +2,18 @@ import OverlandCore
 import SwiftUI
 
 public struct AboutView: View {
+    @ObservedObject var viewModel: VpnViewModel
+
+    public init(viewModel: VpnViewModel) {
+        self.viewModel = viewModel
+    }
+
+    private var appVersion: String {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return build.map { $0 == short ? short : "\(short) (\($0))" } ?? short
+    }
+
     public var body: some View {
         VStack(spacing: 20) {
             Image(nsImage: NSApp.applicationIconImage)
@@ -14,7 +26,7 @@ public struct AboutView: View {
                 Text("Overland")
                     .font(.title2.weight(.bold))
 
-                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev") · Native SwiftUI")
+                Text("Version \(appVersion)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -32,7 +44,7 @@ public struct AboutView: View {
                 HStack {
                     Text("Backend:")
                         .foregroundStyle(.secondary)
-                    Text("gpclient (GlobalProtect-openconnect) + OpenConnect")
+                    Text("gpclient \(viewModel.backendVersion ?? "(not found)") · OpenConnect")
                         .fontWeight(.medium)
                 }
                 .font(.caption)
@@ -40,7 +52,7 @@ public struct AboutView: View {
                 HStack {
                     Text("Privileges:")
                         .foregroundStyle(.secondary)
-                    Text("Tunnel runs via sudo; authentication runs as you")
+                    Text(viewModel.helperManager.isUsable ? "Privileged helper (approved)" : "Administrator dialog")
                         .fontWeight(.medium)
                 }
                 .font(.caption)

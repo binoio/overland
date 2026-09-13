@@ -6,6 +6,9 @@ public enum BridgeEvent: Equatable, Sendable {
     case state(VpnState)
     case gateways([Gateway])
     case manualAuthURL(String)
+    /// The local sign-in page gpauth is serving; lets the UI reopen it.
+    case signInURL(String)
+    case phase(ConnectPhase)
 }
 
 public protocol BridgeServiceProtocol: Actor {

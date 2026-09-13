@@ -81,7 +81,7 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
         portal: String = "",
         selectedGatewayServer: String? = nil,
         username: String = "",
-        authMethod: AuthMethod = .credentials,
+        authMethod: AuthMethod = .browserSSO,
         browserMode: BrowserMode = .systemDefault,
         certificatePath: String? = nil,
         sslKeyPath: String? = nil,

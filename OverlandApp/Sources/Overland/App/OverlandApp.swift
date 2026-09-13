@@ -19,14 +19,13 @@ struct OverlandApp: App {
     }
 
     var body: some Scene {
-        // Main Application Window
         // A single window: WindowGroup would open another one every time the
         // browser hands the globalprotectcallback: URL back to the app.
         Window("Overland", id: "main") {
             ContentView(viewModel: viewModel)
         }
         .windowStyle(.automatic)
-        .defaultSize(width: 800, height: 540)
+        .defaultSize(width: 820, height: 560)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button(viewModel.state.isConnected || viewModel.state.isConnecting ? "Disconnect VPN" : "Connect VPN") {
@@ -51,40 +50,29 @@ struct OverlandApp: App {
             }
         }
 
-        // Native Menu Bar Extra Tray Icon
+        Settings {
+            SettingsView(viewModel: viewModel)
+        }
+
         MenuBarExtra {
             MenuBarExtraView(viewModel: viewModel) {
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "main")
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: menuBarIconName)
-                if viewModel.state.isConnecting {
-                    Text("…")
-                }
-            }
+            menuBarLabel
         }
         .menuBarExtraStyle(.window)
-
-        // Settings Window
-        Settings {
-            SettingsView(viewModel: viewModel)
-        }
     }
 
-    private var menuBarIconName: String {
-        switch viewModel.state {
-        case .connected:
-            return "checkmark.shield.fill"
-        case .connecting:
-            return "shield.lefthalf.filled"
-        case .disconnecting:
-            return "shield"
-        case .disconnected:
-            return "shield"
-        case .failed:
-            return "exclamationmark.shield.fill"
+    @ViewBuilder
+    private var menuBarLabel: some View {
+        let symbol = MenuBarIcon.symbol(for: viewModel.state)
+        if viewModel.state.isConnecting {
+            Image(systemName: symbol)
+                .symbolEffect(.pulse, options: .repeating, isActive: true)
+        } else {
+            Image(systemName: symbol)
         }
     }
 }

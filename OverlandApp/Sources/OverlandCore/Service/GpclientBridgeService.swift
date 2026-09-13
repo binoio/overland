@@ -216,6 +216,8 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
                 case .manualAuthURL(let url):
                     bus.send(.manualAuthURL(url))
                     stateSink(.connecting(status: "Open the sign-in URL in a browser…"))
+                case .signInURL(let url):
+                    bus.send(.signInURL(url))
                 case .authDataReceived:
                     stateSink(.connecting(status: "Browser sign-in received…"))
                 case .fatalError(let message):
@@ -237,6 +239,7 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
 
     /// Phase 1 for SSO profiles: returns the SamlAuthResult JSON line.
     private func runBrowserAuth(builder: GpclientCommandBuilder, profile: ConnectionProfile) async throws -> String {
+        bus.send(.phase(.signIn))
         setState(.connecting(status: "Signing in to \(profile.portal)…"))
         let outcome = try await runUnprivileged(builder.browserAuthCommand(profile: profile))
         if let failure = outcome.authFailure {
@@ -343,8 +346,10 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         log(.debug, "Running (privileged, \(mode.rawValue)): \(command.displayString)")
         switch mode {
         case .helper:
+            bus.send(.phase(.tunnel))
             setState(.connecting(status: "Connecting to \(profile.portal)…"))
         case .adminPrompt:
+            bus.send(.phase(.authorize))
             setState(.connecting(status: "Requesting administrator privileges…"))
         }
 
@@ -460,6 +465,7 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         details.gatewayName = name
         details.gatewayServer = server
         activeDetails = details
+        bus.send(.phase(.tunnel))
         setState(.connecting(status: "Connecting to gateway \(name)…"))
     }
 

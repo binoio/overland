@@ -15,37 +15,55 @@ public struct SettingsView: View {
 
             backendTab
                 .tabItem { Label("Backend", systemImage: "terminal") }
-
-            developerTab
-                .tabItem { Label("Developer", systemImage: "hammer") }
         }
         .padding(20)
-        .frame(width: 560, height: 480)
+        .frame(minWidth: 560, idealWidth: 600, minHeight: 460, idealHeight: 520)
     }
+
+    // MARK: General
 
     private var generalTab: some View {
         Form {
-            Section("Startup & Launch") {
+            Section("Behavior") {
                 Toggle("Launch Overland at login", isOn: Binding(
                     get: { viewModel.launchAtLogin },
                     set: { viewModel.setLaunchAtLogin($0) }
                 ))
 
-                Toggle("Auto-connect when app launches", isOn: $viewModel.profile.autoConnect)
+                Toggle("Connect automatically when Overland starts", isOn: $viewModel.profile.autoConnect)
                     .onChange(of: viewModel.profile.autoConnect) { viewModel.saveProfile() }
+
+                Toggle("Show only in the menu bar", isOn: Binding(
+                    get: { viewModel.menuBarOnly },
+                    set: { viewModel.setMenuBarOnly($0) }
+                ))
+                Text("Hides the Dock icon. Open the window any time from the menu bar item.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
-            Section("Security & Credentials") {
+            Section("Credentials") {
                 Toggle("Remember password in macOS Keychain", isOn: $viewModel.rememberPassword)
                     .onChange(of: viewModel.rememberPassword) { viewModel.saveProfile() }
+                Text("Only applies to the Username & Password sign-in method.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Button("Run first-time setup again…") {
+                    viewModel.needsSetup = true
+                }
             }
         }
         .formStyle(.grouped)
     }
 
+    // MARK: Network
+
     private var networkTab: some View {
         Form {
-            Section("Tunnel Options") {
+            Section("Tunnel") {
                 Toggle("Disable IPv6", isOn: $viewModel.profile.disableIPv6)
                 Toggle("Disable DTLS / ESP (force TCP/TLS)", isOn: $viewModel.profile.noDTLS)
                 Toggle("Send HIP (Host Integrity) report", isOn: $viewModel.profile.enableHIP)
@@ -57,26 +75,21 @@ public struct SettingsView: View {
                 Toggle("Use extended OpenSSL compatibility mode", isOn: $viewModel.profile.fixOpenSSL)
             }
 
-            Section("Advanced Tuning") {
-                HStack {
-                    Text("MTU (0 = automatic):")
-                    Spacer()
+            Section("Tuning") {
+                LabeledContent("MTU (0 = automatic)") {
                     TextField("0", value: $viewModel.profile.mtu, format: .number)
                         .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
                 }
-
-                HStack {
-                    Text("Dead peer detection interval (seconds):")
-                    Spacer()
+                LabeledContent("Dead peer detection interval (s)") {
                     TextField("0", value: $viewModel.profile.forceDPD, format: .number)
                         .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
                 }
-
-                HStack {
-                    Text("Reconnect timeout (seconds):")
-                    Spacer()
+                LabeledContent("Reconnect timeout (s)") {
                     TextField("300", value: $viewModel.profile.reconnectTimeout, format: .number)
                         .frame(width: 80)
+                        .multilineTextAlignment(.trailing)
                 }
             }
         }
@@ -92,56 +105,12 @@ public struct SettingsView: View {
         .onChange(of: viewModel.profile.reconnectTimeout) { viewModel.saveProfile() }
     }
 
+    // MARK: Backend
+
     private var backendTab: some View {
         Form {
-            Section("gpclient") {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        TextField("Auto-detect", text: Binding(
-                            get: { viewModel.customBinaryPath },
-                            set: { viewModel.setCustomBinaryPath($0) }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-
-                        Button("Browse…") {
-                            if let path = chooseFile() { viewModel.setCustomBinaryPath(path) }
-                        }
-                    }
-                    detectedRow(label: "gpclient", value: viewModel.resolvedGpclientPath)
-                    detectedRow(label: "gpauth (SSO)", value: viewModel.resolvedGpauthPath)
-                }
-            }
-
-            Section("vpnc-script") {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        TextField("Auto-detect", text: Binding(
-                            get: { viewModel.profile.vpncScriptPath ?? "" },
-                            set: {
-                                viewModel.profile.vpncScriptPath = $0.isEmpty ? nil : $0
-                                viewModel.saveProfile()
-                                viewModel.refreshResolvedPaths()
-                            }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-
-                        Button("Browse…") {
-                            if let path = chooseFile() {
-                                viewModel.profile.vpncScriptPath = path
-                                viewModel.saveProfile()
-                                viewModel.refreshResolvedPaths()
-                            }
-                        }
-                    }
-                    detectedRow(label: "Using", value: viewModel.resolvedVpncScriptPath)
-                    Text("OpenConnect runs this script as root to configure the utun interface, routes and DNS.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             Section("Privileges") {
-                Picker("Run the tunnel with", selection: $viewModel.profile.privilegeMode) {
+                Picker("Open the tunnel with", selection: $viewModel.profile.privilegeMode) {
                     ForEach(PrivilegeMode.allCases, id: \.self) { mode in
                         Text(mode.title).tag(mode)
                     }
@@ -152,27 +121,75 @@ public struct SettingsView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                helperStatusRow
+                HelperStatusRow(manager: viewModel.helperManager, onUninstall: { await viewModel.uninstallHelper() })
             }
 
-            Section {
+            Section("Binaries") {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        TextField("gpclient (auto-detect)", text: Binding(
+                            get: { viewModel.customBinaryPath },
+                            set: { viewModel.setCustomBinaryPath($0) }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        Button("Browse…") {
+                            if let path = chooseFile() { viewModel.setCustomBinaryPath(path) }
+                        }
+                    }
+                    detectedRow(label: "gpclient", value: viewModel.resolvedGpclientPath)
+                    detectedRow(label: "gpauth (SSO)", value: viewModel.resolvedGpauthPath)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        TextField("vpnc-script (auto-detect)", text: Binding(
+                            get: { viewModel.profile.vpncScriptPath ?? "" },
+                            set: {
+                                viewModel.profile.vpncScriptPath = $0.isEmpty ? nil : $0
+                                viewModel.saveProfile()
+                                viewModel.refreshResolvedPaths()
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        Button("Browse…") {
+                            if let path = chooseFile() {
+                                viewModel.profile.vpncScriptPath = path
+                                viewModel.saveProfile()
+                                viewModel.refreshResolvedPaths()
+                            }
+                        }
+                    }
+                    detectedRow(label: "vpnc-script", value: viewModel.resolvedVpncScriptPath)
+                }
+
                 Button("Re-detect") { viewModel.refreshResolvedPaths() }
+            }
+
+            Section("Advanced") {
+                Toggle("Use mock backend (offline simulation)", isOn: Binding(
+                    get: { viewModel.useMockBridge },
+                    set: { viewModel.setUseMockBridge($0) }
+                ))
+                Text("Simulates sign-in, gateway discovery and a tunnel without a VPN server, a gpclient build, or privileges.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Button("Reset profile to defaults") {
+                    viewModel.resetProfile()
+                }
+                .foregroundStyle(.red)
             }
         }
         .formStyle(.grouped)
         .onAppear { viewModel.refreshResolvedPaths() }
     }
 
-    private var helperStatusRow: some View {
-        HelperStatusRow(manager: viewModel.helperManager, onUninstall: { await viewModel.uninstallHelper() })
-    }
-
     private var privilegeHelp: String {
         switch viewModel.profile.privilegeMode {
         case .helper:
-            return "A small root helper is registered with launchd and approved once in System Settings › Login Items & Extensions. After that, connecting never prompts. Requires a signed build."
+            return "A small root helper inside the app is registered with launchd and approved once in System Settings › Login Items & Extensions. After that, connecting never prompts. Requires a signed build; falls back to the dialog when unavailable."
         case .adminPrompt:
-            return "macOS shows its standard authorization dialog each time the tunnel starts. It asks for an administrator's name and password, so it also works from a non-administrator account. Nothing is installed system-wide."
+            return "macOS shows its standard authorization dialog each time the tunnel starts. It asks for an administrator’s name and password, so it also works from a non-administrator account."
         }
     }
 
@@ -186,29 +203,6 @@ public struct SettingsView: View {
                 .textSelection(.enabled)
                 .lineLimit(2)
         }
-    }
-
-    private var developerTab: some View {
-        Form {
-            Section("Simulation & Mocking") {
-                Toggle("Use Mock Bridge (offline simulation)", isOn: Binding(
-                    get: { viewModel.useMockBridge },
-                    set: { viewModel.setUseMockBridge($0) }
-                ))
-
-                Text("Simulates portal login, gateway discovery and an active tunnel without a VPN server, a gpclient build, or administrator privileges.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section("Reset") {
-                Button("Reset Profile to Defaults") {
-                    viewModel.resetProfile()
-                }
-                .foregroundStyle(.red)
-            }
-        }
-        .formStyle(.grouped)
     }
 
     private func chooseFile() -> String? {
