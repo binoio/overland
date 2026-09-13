@@ -12,6 +12,11 @@ var targets: [Target] = [
         name: "OverlandCore",
         path: "Sources/OverlandCore"
     ),
+    // Tiny exec shim used by the privileged wrapper; see Sources/overland-exec/main.swift.
+    .executableTarget(
+        name: "overland-exec",
+        path: "Sources/overland-exec"
+    ),
     .testTarget(
         name: "OverlandCoreTests",
         dependencies: ["OverlandCore"],
@@ -20,7 +25,8 @@ var targets: [Target] = [
 ]
 
 var products: [Product] = [
-    .library(name: "OverlandCore", targets: ["OverlandCore"])
+    .library(name: "OverlandCore", targets: ["OverlandCore"]),
+    .executable(name: "overland-exec", targets: ["overland-exec"])
 ]
 
 #if os(macOS)

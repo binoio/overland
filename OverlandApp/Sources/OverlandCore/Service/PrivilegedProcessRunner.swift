@@ -55,7 +55,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
     public static let wrapperScript = """
     #!/bin/bash
     # Overland: root-side launcher.
-    # Usage: overland-privileged-wrapper.sh <session-dir> <executable> [args…]
+    # Usage: overland-privileged-wrapper.sh <session-dir> <exec-helper|-> <executable> [args…]
     #
     # Detaches a supervisor that runs the command with stdin from
     # <session>/stdin.txt (deleted right after spawn), appends its output to
@@ -67,6 +67,10 @@ public actor PrivilegedProcessRunner: ProcessRunning {
     # with SIGINT ignored, and gpclient would inherit that and never see the
     # disconnect request.
     SESSION="$1"; shift
+    # overland-exec resets the signal mask the authorization trampoline leaves
+    # blocked; without it the command could never receive stop/kill.
+    EXEC_HELPER="$1"; shift
+    [ "$EXEC_HELPER" = "-" ] && EXEC_HELPER=""
     LOG="$SESSION/tunnel.log"
     STDIN_FILE="$SESSION/stdin.txt"
     [ -f "$STDIN_FILE" ] || STDIN_FILE=/dev/null
@@ -85,7 +89,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
       # write to it as soon as it sees the pid file.
       exec 3<> "$SESSION/control.fifo"
       (
-        /bin/sh -c 'echo $$ > "$0/pid"; exec "$@"' "$SESSION" "$@" < "$STDIN_FILE" >> "$LOG" 2>&1 3>&-
+        /bin/bash -c 'echo $$ > "$0/pid"; exec $1 "${@:2}"' "$SESSION" "$EXEC_HELPER" "$@" < "$STDIN_FILE" >> "$LOG" 2>&1 3>&-
         echo $? > "$SESSION/exit.tmp"
         mv "$SESSION/exit.tmp" "$SESSION/exit"
       ) &
@@ -163,6 +167,9 @@ public actor PrivilegedProcessRunner: ProcessRunning {
 
     public var sessionsDirectory: URL
     public var osascriptPath: String
+    /// Path to `overland-exec`; nil runs the command directly (tests, or when
+    /// the helper is missing — then signals may not reach a root command).
+    public var execHelperPath: String?
     public var prompt: String
     public var pollInterval: TimeInterval
     public var launchTimeout: TimeInterval
@@ -175,6 +182,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
     public init(
         sessionsDirectory: URL? = nil,
         osascriptPath: String = "/usr/bin/osascript",
+        execHelperPath: String? = PrivilegedProcessRunner.locateExecHelper(),
         prompt: String = "Overland needs administrator privileges to start the VPN tunnel.",
         pollInterval: TimeInterval = 0.15,
         launchTimeout: TimeInterval = 20,
@@ -182,10 +190,22 @@ public actor PrivilegedProcessRunner: ProcessRunning {
     ) {
         self.sessionsDirectory = sessionsDirectory ?? Self.defaultSessionsDirectory
         self.osascriptPath = osascriptPath
+        self.execHelperPath = execHelperPath
         self.prompt = prompt
         self.pollInterval = pollInterval
         self.launchTimeout = launchTimeout
         self.makeRunner = runnerFactory
+    }
+
+    /// `overland-exec` is built next to the app executable (`swift run`) and
+    /// bundled into `Contents/MacOS`.
+    public static func locateExecHelper() -> String? {
+        var candidates: [String] = []
+        if let exe = Bundle.main.executableURL {
+            candidates.append(exe.deletingLastPathComponent().appendingPathComponent("overland-exec").path)
+        }
+        candidates.append(Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/overland-exec").path)
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
     public var isRunning: Bool { running }
@@ -234,7 +254,7 @@ public actor PrivilegedProcessRunner: ProcessRunning {
     public func osascriptCommand(session: URL, command: CommandLine) -> CommandLine {
         // Run the wrapper in the foreground: it detaches its own supervisor. A
         // trailing `&` here would hand the whole tree SIGINT=ignored.
-        let words = ["/bin/bash", wrapperURL.path, session.path, command.executable] + command.arguments
+        let words = ["/bin/bash", wrapperURL.path, session.path, execHelperPath ?? "-", command.executable] + command.arguments
         let shell = ShellQuoting.posixCommand(words)
         let script = "do shell script \"\(ShellQuoting.appleScript(shell))\" with prompt \"\(ShellQuoting.appleScript(prompt))\" with administrator privileges"
         return CommandLine(executable: osascriptPath, arguments: ["-e", script])

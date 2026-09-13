@@ -29,7 +29,10 @@ Password and certificate profiles skip the sign-in step and pass
   `do shell script` is synchronous, what runs under authorization is a small
   wrapper (`~/Library/Application Support/Overland/overland-privileged-wrapper.sh`)
   that detaches a supervisor: it runs gpclient, mirrors its output to a per-run
-  log the app tails, and relays `stop`/`kill` from a FIFO. Settings ▸ Backend
+  log the app tails, and relays `stop`/`kill` from a FIFO. Processes started
+  through the trampoline inherit a signal mask with SIGINT/SIGTERM blocked, so
+  the command is exec'd through `overland-exec`, a shim that resets the mask
+  and dispositions first — without it the tunnel could never be signalled. Settings ▸ Backend
   can switch to `sudo -A` (askpass dialog), `sudo -n` (NOPASSWD sudoers rule),
   or no escalation.
 * Disconnect sends SIGINT to gpclient (through the supervisor's FIFO, or via

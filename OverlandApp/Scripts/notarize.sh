@@ -30,7 +30,7 @@ echo "==> Signing inside-out (never --deep for the final pass)"
 for lib in "${APP}/Contents/Frameworks"/*.dylib(N); do
     codesign --force --options runtime --timestamp --sign "$IDENTITY" "$lib"
 done
-for helper in gpclient gpauth; do
+for helper in gpclient gpauth overland-exec; do
     if [[ -x "${APP}/Contents/MacOS/${helper}" ]]; then
         codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}/Contents/MacOS/${helper}"
     fi

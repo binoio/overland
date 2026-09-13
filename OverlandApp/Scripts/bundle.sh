@@ -27,6 +27,7 @@ cd "$REPO_ROOT"
 
 echo "==> Building Overland (release)"
 xcrun swift build -c release --package-path "$APP_DIR" --product Overland
+xcrun swift build -c release --package-path "$APP_DIR" --product overland-exec
 BIN_PATH="$(xcrun swift build -c release --package-path "$APP_DIR" --show-bin-path)"
 
 echo "==> Assembling bundle at ${APP_BUNDLE}"
@@ -35,6 +36,9 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 
 cp "${BIN_PATH}/Overland" "${MACOS_DIR}/Overland"
 chmod +x "${MACOS_DIR}/Overland"
+# Signal-reset exec shim used by the privileged wrapper (see Sources/overland-exec).
+cp "${BIN_PATH}/overland-exec" "${MACOS_DIR}/overland-exec"
+chmod +x "${MACOS_DIR}/overland-exec"
 
 # SwiftPM resource bundle (icon etc.) plus a flat copy of the icon for CFBundleIconFile.
 if [[ -d "${BIN_PATH}/Overland_Overland.bundle" ]]; then

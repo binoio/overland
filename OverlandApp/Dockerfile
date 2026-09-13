@@ -9,6 +9,7 @@ FROM swift:6.0-noble
 WORKDIR /workspace
 COPY Package.swift ./
 COPY Sources/OverlandCore ./Sources/OverlandCore
+COPY Sources/overland-exec ./Sources/overland-exec
 COPY Tests/OverlandCoreTests ./Tests/OverlandCoreTests
 
 RUN swift build --build-tests

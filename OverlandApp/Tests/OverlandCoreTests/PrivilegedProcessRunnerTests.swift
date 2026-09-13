@@ -315,3 +315,118 @@ final class OrphanSessionTests: XCTestCase {
         return condition()
     }
 }
+
+/// Stands in for osascript like `FakeOsascriptRunner`, but first blocks
+/// SIGINT/SIGTERM the way the administrator authorization trampoline does.
+actor BlockedMaskOsascriptRunner: ProcessRunning {
+    var isRunning = false
+
+    static let perl = "/usr/bin/perl"
+
+    func run(_ command: CommandLine, onLine: (@Sendable (ProcessStream, String) -> Void)?) async throws -> ProcessResult {
+        guard command.arguments.count == 2, command.arguments[0] == "-e",
+              let shell = FakeOsascriptRunner.extractShell(from: command.arguments[1]) else {
+            return ProcessResult(exitCode: 2, stderr: "unexpected osascript invocation")
+        }
+        let block = "use POSIX qw(sigprocmask SIG_BLOCK SIGINT SIGTERM); sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGINT, SIGTERM)); exec @ARGV"
+        return try await ProcessRunner().run(CommandLine(executable: Self.perl, arguments: ["-e", block, "/bin/sh", "-c", shell]))
+    }
+
+    func interrupt() {}
+    func terminate() {}
+}
+
+final class ExecHelperTests: XCTestCase {
+    private var root: URL!
+
+    /// `overland-exec` is a product of this package, built into the same
+    /// build directory as the test bundle (a .xctest directory on macOS, a
+    /// bare executable on Linux).
+    static var execHelper: String? {
+        var dirs: [URL] = [
+            Bundle(for: ExecHelperTests.self).bundleURL.deletingLastPathComponent(),
+            Bundle.main.bundleURL,
+        ]
+        if let exe = Bundle.main.executableURL {
+            dirs.append(exe.deletingLastPathComponent())
+        }
+        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        dirs.append(cwd.appendingPathComponent(".build/debug"))
+        return dirs.map { $0.appendingPathComponent("overland-exec").path }
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    override func setUpWithError() throws {
+        try XCTSkipIf(!FileManager.default.isExecutableFile(atPath: BlockedMaskOsascriptRunner.perl), "perl is needed to block the signal mask")
+        try XCTSkipIf(Self.execHelper == nil, "overland-exec not built; run swift build")
+        root = FileManager.default.temporaryDirectory.appendingPathComponent("gp-exec-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private func runUnderBlockedMask(execHelper: String?) async throws -> (ProcessResult, [String]) {
+        let runner = PrivilegedProcessRunner(
+            sessionsDirectory: root.appendingPathComponent("sessions"),
+            execHelperPath: execHelper,
+            pollInterval: 0.05,
+            launchTimeout: 5,
+            runnerFactory: { BlockedMaskOsascriptRunner() }
+        )
+        let lines = LineSink()
+        let script = #"trap 'echo interrupted; exit 3' INT; echo ready; while :; do sleep 0.1; done"#
+        let task = Task {
+            try await runner.run(CommandLine(executable: "/bin/bash", arguments: ["-c", script]), onLine: { _, line in lines.append(line) })
+        }
+        let deadline = Date().addingTimeInterval(5)
+        while !lines.lines.contains("ready"), Date() < deadline {
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+        await runner.interrupt()
+        // Give a signal-deaf child a moment to prove it is deaf, then force it out.
+        let exitDeadline = Date().addingTimeInterval(2)
+        while await runner.isRunning, Date() < exitDeadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        if await runner.isRunning {
+            let pidFile = try FileManager.default.contentsOfDirectory(at: root.appendingPathComponent("sessions"), includingPropertiesForKeys: nil).first!.appendingPathComponent("pid")
+            if let pid = Int32((try String(contentsOf: pidFile, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines)) {
+                kill(pid, SIGKILL)
+            }
+        }
+        let result = try await task.value
+        return (result, lines.lines)
+    }
+
+    /// Without the helper, a blocked mask (what the trampoline leaves behind)
+    /// makes the command deaf to the supervisor — the bug seen in production.
+    /// macOS-only: its bash 3.2 keeps the inherited mask, whereas newer bash
+    /// on Linux clears it, which is exactly why this needs a real test here.
+    func testBlockedMaskWithoutHelperSwallowsInterrupt() async throws {
+        #if !os(macOS)
+        throw XCTSkip("documents macOS bash 3.2 behaviour")
+        #endif
+        let (result, lines) = try await runUnderBlockedMask(execHelper: nil)
+        XCTAssertEqual(lines, ["ready"], "the trap never fired")
+        XCTAssertNotEqual(result.exitCode, 3)
+    }
+
+    func testExecHelperRestoresSignalDelivery() async throws {
+        let (result, lines) = try await runUnderBlockedMask(execHelper: Self.execHelper)
+        XCTAssertEqual(lines, ["ready", "interrupted"])
+        XCTAssertEqual(result.exitCode, 3)
+    }
+
+    func testOsascriptCommandCarriesHelperPath() async {
+        let runner = PrivilegedProcessRunner(sessionsDirectory: root, execHelperPath: "/opt/overland-exec", runnerFactory: { FakeOsascriptRunner() })
+        let cmd = await runner.osascriptCommand(session: root, command: CommandLine(executable: "/opt/gpclient", arguments: ["connect"]))
+        let shell = FakeOsascriptRunner.extractShell(from: cmd.arguments[1])!
+        XCTAssertTrue(shell.contains("'/opt/overland-exec' '/opt/gpclient' 'connect'"), shell)
+
+        let bare = PrivilegedProcessRunner(sessionsDirectory: root, execHelperPath: nil, runnerFactory: { FakeOsascriptRunner() })
+        let bareShell = FakeOsascriptRunner.extractShell(from: (await bare.osascriptCommand(session: root, command: CommandLine(executable: "/opt/gpclient", arguments: []))).arguments[1])!
+        XCTAssertTrue(bareShell.contains("'-' '/opt/gpclient'"), bareShell)
+    }
+}
