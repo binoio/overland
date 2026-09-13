@@ -1,6 +1,0 @@
-services:
-  core-tests:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: globalprotect-core-tests

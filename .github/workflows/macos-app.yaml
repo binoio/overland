@@ -1,13 +1,13 @@
 name: macOS App
 
 # The SwiftUI app itself can only be compiled on macOS, so CI covers the
-# platform-independent GlobalProtectCore module (models, gpclient command
+# platform-independent JeepNetCore module (models, gpclient command
 # builder, output parser, bridge orchestration) inside a Linux container, plus
 # the Rust change the app relies on (gateway inventory log lines in gpapi).
 on:
   push:
     paths:
-      - "GlobalProtectApp/**"
+      - "JeepNetApp/**"
       - "crates/gpapi/src/portal/config.rs"
       - ".github/workflows/macos-app.yaml"
     branches:
@@ -17,7 +17,7 @@ on:
       - release/*
   pull_request:
     paths:
-      - "GlobalProtectApp/**"
+      - "JeepNetApp/**"
       - "crates/gpapi/src/portal/config.rs"
       - ".github/workflows/macos-app.yaml"
 
@@ -27,16 +27,16 @@ concurrency:
 
 jobs:
   core-tests:
-    name: GlobalProtectCore tests (Linux container)
+    name: JeepNetCore tests (Linux container)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Build test image
-        run: docker build -t globalprotect-core-tests -f GlobalProtectApp/Dockerfile GlobalProtectApp
+        run: docker build -t jeepnet-core-tests -f JeepNetApp/Dockerfile JeepNetApp
 
       - name: Run tests
-        run: docker run --rm globalprotect-core-tests
+        run: docker run --rm jeepnet-core-tests
 
   gpapi-gateway-inventory:
     name: gpapi portal config tests
