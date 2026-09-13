@@ -78,7 +78,10 @@ drives the UI. Details: [`OverlandApp/README.md`](OverlandApp/README.md).
 Overland is a downstream project, not a fork intended for upstream
 contribution. The Rust workspace here (`apps/`, `crates/`, `packaging/`,
 `Makefile`, the Linux CI workflows) is GlobalProtect-openconnect's, kept intact
-so upstream changes can be merged with `git merge upstream/main`. Overland's
+so upstream changes can be merged with `git merge upstream/main`. Upstream's
+GitHub Actions workflows (Linux packages, Docker images, AUR/PPA/Nix) are
+disabled in this repository's settings rather than deleted, so merges stay
+conflict-free; only the `macOS App` workflow runs here. Overland's
 own code lives in [`OverlandApp/`](OverlandApp/) and [`docs/`](docs/), plus one
 small addition to `crates/gpapi` (a per-gateway log line the app parses).
 
