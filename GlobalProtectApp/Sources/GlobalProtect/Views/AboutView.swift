@@ -48,7 +48,7 @@ public struct AboutView: View {
                 HStack {
                     Text("License:")
                         .foregroundStyle(.secondary)
-                    Text("App: MIT · gpclient: GPL-3.0 · OpenConnect: LGPL-2.1")
+                    Text("GPL-3.0 (OpenConnect: LGPL-2.1, vpnc-script: GPL-2.0+)")
                         .fontWeight(.medium)
                 }
                 .font(.caption)

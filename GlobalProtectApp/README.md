@@ -136,6 +136,6 @@ Signs the embedded dylibs and gpclient, then the app with hardened runtime and
 
 ## License
 
-The Swift app is MIT licensed (see `LICENSE.md`). `gpclient` is GPL-3.0,
-OpenConnect is LGPL-2.1 and `vpnc-script` is GPL-2.0+; the app runs gpclient
-as a separate process.
+GPL-3.0, the same as the rest of this repository (see the root `LICENSE`).
+The bundled `gpclient`/`gpauth` are GPL-3.0, OpenConnect is LGPL-2.1 and
+`vpnc-script` is GPL-2.0+; all are compatible with GPL-3.0.
