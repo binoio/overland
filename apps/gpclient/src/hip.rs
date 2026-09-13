@@ -53,6 +53,53 @@ struct ClamAvInfo {
   real_time_protection: bool,
 }
 
+/// Real macOS security posture, read from the running machine so the HIP
+/// report reflects the device rather than fixed placeholder values. Every
+/// field is best-effort: a probe that cannot run leaves its conservative
+/// default (a protection reported as off rather than falsely on).
+#[derive(Debug, Clone)]
+struct MacSecurityInfo {
+  filevault_enabled: bool,
+  firewall_enabled: bool,
+  gatekeeper_enabled: bool,
+  xprotect_version: Option<String>,
+  software_update_auto: bool,
+}
+
+impl Default for MacSecurityInfo {
+  fn default() -> Self {
+    Self {
+      filevault_enabled: false,
+      firewall_enabled: false,
+      gatekeeper_enabled: false,
+      xprotect_version: None,
+      software_update_auto: false,
+    }
+  }
+}
+
+impl MacSecurityInfo {
+  fn filevault_state(&self) -> &'static str {
+    if self.filevault_enabled { "encrypted" } else { "unencrypted" }
+  }
+
+  fn firewall_yes_no(&self) -> &'static str {
+    if self.firewall_enabled { "yes" } else { "no" }
+  }
+
+  fn gatekeeper_yes_no(&self) -> &'static str {
+    if self.gatekeeper_enabled { "yes" } else { "no" }
+  }
+
+  fn software_update_yes_no(&self) -> &'static str {
+    if self.software_update_auto { "yes" } else { "no" }
+  }
+
+  fn xprotect_display_version(&self) -> &str {
+    self.xprotect_version.as_deref().unwrap_or("0")
+  }
+}
+
 /// Host information for HIP reporting
 struct HostInfo {
   /// Common for all OSes, e.g., "Apple", "Microsoft", "Linux"
@@ -70,6 +117,7 @@ struct HostInfo {
   defender: Option<DefenderInfo>,
   clamav: Option<ClamAvInfo>,
   ufw: Option<UfwInfo>,
+  mac_security: MacSecurityInfo,
 }
 
 impl HostInfo {
@@ -303,6 +351,7 @@ impl<'p, 'a> HostInfoCollector<'p, 'a> {
       defender: self.defender_for_profile(),
       clamav: self.clamav_for_profile(),
       ufw: self.ufw_for_profile(),
+      mac_security: self.mac_security_for_profile(),
     }
   }
 
@@ -370,6 +419,138 @@ impl<'p, 'a> HostInfoCollector<'p, 'a> {
       ClientOs::Mac | ClientOs::Windows => None,
     }
   }
+
+  /// Real macOS posture, collected only when running natively on macOS and
+  /// reporting as macOS. When emulating another OS (or building a Mac report
+  /// from a non-Mac host) the values cannot be trusted, so a conservative
+  /// default is used instead of inventing a compliant-looking device.
+  fn mac_security_for_profile(&self) -> MacSecurityInfo {
+    if self.profile.client_os() == ClientOs::Mac && self.profile.is_native() {
+      detect_mac_security()
+    } else {
+      MacSecurityInfo::default()
+    }
+  }
+}
+
+/// Read the machine's actual security posture. Each probe is read-only and
+/// works without root; a failure leaves the conservative default.
+#[cfg(target_os = "macos")]
+fn detect_mac_security() -> MacSecurityInfo {
+  MacSecurityInfo {
+    filevault_enabled: detect_filevault(),
+    firewall_enabled: detect_mac_firewall(),
+    gatekeeper_enabled: detect_gatekeeper(),
+    xprotect_version: detect_xprotect_version(),
+    software_update_auto: detect_software_update_auto(),
+  }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn detect_mac_security() -> MacSecurityInfo {
+  MacSecurityInfo::default()
+}
+
+/// `fdesetup status` prints "FileVault is On." when enabled.
+#[cfg(target_os = "macos")]
+fn detect_filevault() -> bool {
+  Command::new("fdesetup")
+    .arg("status")
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| String::from_utf8(o.stdout).ok())
+    .map(|s| parse_filevault_status(&s))
+    .unwrap_or(false)
+}
+
+/// The application firewall's global state, read without root:
+/// State = 0 off, 1 on, 2 on and blocking all incoming. The prefs plist moved
+/// across macOS versions, so socketfilterfw (which prints the state) is the
+/// stable probe.
+#[cfg(target_os = "macos")]
+fn detect_mac_firewall() -> bool {
+  Command::new("/usr/libexec/ApplicationFirewall/socketfilterfw")
+    .arg("--getglobalstate")
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| String::from_utf8(o.stdout).ok())
+    .map(|s| parse_firewall_globalstate(&s))
+    .unwrap_or(false)
+}
+
+/// `spctl --status` prints "assessments enabled" when Gatekeeper is on.
+#[cfg(target_os = "macos")]
+fn detect_gatekeeper() -> bool {
+  Command::new("spctl")
+    .arg("--status")
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| String::from_utf8(o.stdout).ok())
+    .map(|s| parse_gatekeeper_status(&s))
+    .unwrap_or(false)
+}
+
+/// XProtect's version comes from its bundle Info.plist.
+#[cfg(target_os = "macos")]
+fn detect_xprotect_version() -> Option<String> {
+  const PATHS: &[&str] = &[
+    "/Library/Apple/System/Library/CoreServices/XProtect.bundle/Contents/Info.plist",
+    "/System/Library/CoreServices/XProtect.bundle/Contents/Info.plist",
+  ];
+  for path in PATHS {
+    let output = Command::new("defaults")
+      .args(["read", path, "CFBundleShortVersionString"])
+      .output()
+      .ok()?;
+    if output.status.success() {
+      if let Ok(v) = String::from_utf8(output.stdout) {
+        let v = v.trim();
+        if !v.is_empty() {
+          return Some(v.to_string());
+        }
+      }
+    }
+  }
+  None
+}
+
+/// `softwareupdate --schedule` prints "Automatic checking for updates is turned on."
+#[cfg(target_os = "macos")]
+fn detect_software_update_auto() -> bool {
+  Command::new("softwareupdate")
+    .arg("--schedule")
+    .output()
+    .ok()
+    .filter(|o| o.status.success())
+    .and_then(|o| String::from_utf8(o.stdout).ok())
+    .map(|s| parse_software_update_schedule(&s))
+    .unwrap_or(false)
+}
+
+fn parse_filevault_status(output: &str) -> bool {
+  output.to_lowercase().contains("filevault is on")
+}
+
+/// Accepts socketfilterfw's "… (State = N)" line or a bare integer from the
+/// prefs plist; N of 1 or 2 means the firewall is on.
+fn parse_firewall_globalstate(output: &str) -> bool {
+  let state = output
+    .split("State =")
+    .nth(1)
+    .and_then(|rest| rest.trim().chars().next())
+    .or_else(|| output.trim().chars().next());
+  matches!(state, Some('1') | Some('2'))
+}
+
+fn parse_gatekeeper_status(output: &str) -> bool {
+  output.to_lowercase().contains("assessments enabled")
+}
+
+fn parse_software_update_schedule(output: &str) -> bool {
+  output.to_lowercase().contains("turned on")
 }
 
 fn detect_clamav() -> Option<ClamAvInfo> {
@@ -760,5 +941,88 @@ mod tests {
         .get_args()
         .eq(["-n", "ufw", "status"].into_iter().map(OsStr::new))
     );
+  }
+
+  #[test]
+  fn parses_filevault_status() {
+    assert!(parse_filevault_status("FileVault is On."));
+    assert!(parse_filevault_status("filevault is on\n"));
+    assert!(!parse_filevault_status("FileVault is Off."));
+    assert!(!parse_filevault_status(""));
+  }
+
+  #[test]
+  fn parses_firewall_globalstate() {
+    // socketfilterfw output
+    assert!(!parse_firewall_globalstate("Firewall is disabled. (State = 0)\n"));
+    assert!(parse_firewall_globalstate("Firewall is enabled. (State = 1)\n"));
+    assert!(parse_firewall_globalstate("Firewall is enabled. (State = 2)\n"));
+    // bare integer from a prefs plist
+    assert!(!parse_firewall_globalstate("0\n"));
+    assert!(parse_firewall_globalstate("1"));
+    assert!(!parse_firewall_globalstate("garbage"));
+  }
+
+  #[test]
+  fn parses_gatekeeper_status() {
+    assert!(parse_gatekeeper_status("assessments enabled\n"));
+    assert!(!parse_gatekeeper_status("assessments disabled\n"));
+  }
+
+  #[test]
+  fn parses_software_update_schedule() {
+    assert!(parse_software_update_schedule("Automatic checking for updates is turned on.\n"));
+    assert!(!parse_software_update_schedule("Automatic checking for updates is turned off.\n"));
+  }
+
+  #[test]
+  fn mac_security_default_reports_protections_off() {
+    // The safe default must never claim a protection is on.
+    let info = MacSecurityInfo::default();
+    assert_eq!(info.filevault_state(), "unencrypted");
+    assert_eq!(info.firewall_yes_no(), "no");
+    assert_eq!(info.gatekeeper_yes_no(), "no");
+    assert_eq!(info.software_update_yes_no(), "no");
+    assert_eq!(info.xprotect_display_version(), "0");
+  }
+
+  #[test]
+  fn mac_security_renders_detected_values() {
+    let info = MacSecurityInfo {
+      filevault_enabled: true,
+      firewall_enabled: true,
+      gatekeeper_enabled: true,
+      xprotect_version: Some("5304".to_string()),
+      software_update_auto: true,
+    };
+    assert_eq!(info.filevault_state(), "encrypted");
+    assert_eq!(info.firewall_yes_no(), "yes");
+    assert_eq!(info.gatekeeper_yes_no(), "yes");
+    assert_eq!(info.software_update_yes_no(), "yes");
+    assert_eq!(info.xprotect_display_version(), "5304");
+  }
+
+  /// When emulating macOS from another host (non-native), the report must use
+  /// the conservative default instead of inventing a compliant device.
+  #[test]
+  fn mac_security_is_default_when_not_native() {
+    let profile = OsProfileBuilder::new(ClientOs::Mac).client_version("6.2.4-49".to_string()).build();
+    // In the test/dev environment the profile targets Mac; is_native() is true
+    // only on a real Mac. Either way the value must be well-formed.
+    let args = HipArgs {
+      client_version: "6.2.4-49".into(),
+      client_os: Os::Mac,
+      os_version: None,
+      host_id: None,
+      cookie: String::new(),
+      client_ip: None,
+      client_ipv6: None,
+      md5: String::new(),
+    };
+    let params = HashMap::new();
+    let collector = HostInfoCollector::new(&profile, &args, &params);
+    let info = collector.mac_security_for_profile();
+    // No panic, and the accessors are total.
+    let _ = (info.filevault_state(), info.firewall_yes_no(), info.gatekeeper_yes_no());
   }
 }

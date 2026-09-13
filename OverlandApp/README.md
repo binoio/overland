@@ -196,6 +196,18 @@ Signs the embedded dylibs and gpclient, then the app with hardened runtime and
   `gpclient` is not the one the registered helper validates against.
 * The app talks to `gpclient` only; `gpservice`/`gpgui` are not used.
 
+## Host Integrity (HIP) reporting
+
+When a connection enables HIP (Settings ▸ Network ▸ "Send HIP report"), the
+bundled `gpclient` reports this Mac's **actual** security posture rather than
+fixed placeholder values: FileVault state (`fdesetup`), the application
+firewall (`socketfilterfw`), Gatekeeper (`spctl`), the installed XProtect
+version, and whether automatic Software Update checks are on. Each probe is
+read-only and needs no root; if one cannot run, that item is reported in its
+off/absent state rather than as falsely present. A gateway that enforces HIP
+therefore sees the truth — including, for example, a disabled firewall — so a
+non-compliant device may be refused, which is the intended behavior.
+
 ## License
 
 GPL-3.0, the same as the rest of this repository (see the root `LICENSE`).

@@ -141,7 +141,7 @@
 			<list>
 				<entry>
 					<ProductInfo>
-						<Prod vendor="Apple Inc." name="Xprotect" version="2167" defver="235000000000000" engver="" datemon="{{ month }}" dateday="{{ day }}" dateyear="{{ year }}" prodType="3" osType="4"/>
+						<Prod vendor="Apple Inc." name="Xprotect" version="{{ host_info.mac_security.xprotect_display_version() }}" defver="" engver="" datemon="{{ month }}" dateday="{{ day }}" dateyear="{{ year }}" prodType="3" osType="4"/>
 						<real-time-protection>yes</real-time-protection>
 						<last-full-scan-time>n/a</last-full-scan-time>
 					</ProductInfo>
@@ -149,7 +149,7 @@
 				<entry>
 					<ProductInfo>
 						<Prod vendor="Apple Inc." name="Gatekeeper" version="{{ host_info.software_version }}" defver="" engver="" datemon="{{ month }}" dateday="{{ day }}" dateyear="{{ year }}" prodType="3" osType="4"/>
-						<real-time-protection>yes</real-time-protection>
+						<real-time-protection>{{ host_info.mac_security.gatekeeper_yes_no() }}</real-time-protection>
 						<last-full-scan-time>n/a</last-full-scan-time>
 					</ProductInfo>
 				</entry>
@@ -173,15 +173,15 @@
 						<drives>
 							<entry>
 								<drive-name>Macintosh HD</drive-name>
-								<enc-state>encrypted</enc-state>
+								<enc-state>{{ host_info.mac_security.filevault_state() }}</enc-state>
 							</entry>
 							<entry>
 								<drive-name>Data</drive-name>
-								<enc-state>encrypted</enc-state>
+								<enc-state>{{ host_info.mac_security.filevault_state() }}</enc-state>
 							</entry>
 							<entry>
 								<drive-name>All</drive-name>
-								<enc-state>encrypted</enc-state>
+								<enc-state>{{ host_info.mac_security.filevault_state() }}</enc-state>
 							</entry>
 						</drives>
 					</ProductInfo>
@@ -193,7 +193,7 @@
 				<entry>
 					<ProductInfo>
 						<Prod vendor="Apple Inc." name="Mac OS X Builtin Firewall" version="{{ host_info.software_version }}"/>
-						<is-enabled>yes</is-enabled>
+						<is-enabled>{{ host_info.mac_security.firewall_yes_no() }}</is-enabled>
 					</ProductInfo>
 				</entry>
 				<entry>
@@ -209,7 +209,7 @@
 				<entry>
 					<ProductInfo>
 						<Prod vendor="Apple Inc." name="Software Update" version="3.0"/>
-						<is-enabled>yes</is-enabled>
+						<is-enabled>{{ host_info.mac_security.software_update_yes_no() }}</is-enabled>
 					</ProductInfo>
 				</entry>
 			</list>
