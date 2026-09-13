@@ -544,6 +544,7 @@ public final class VpnViewModel: ObservableObject {
     }
 
     public func deliverAuthCallback(_ data: String) {
+        appendLog(LogEntry(level: .info, message: "Processing authentication callback from browser"))
         Task {
             do {
                 try await self.bridge.deliverAuthCallback(data)

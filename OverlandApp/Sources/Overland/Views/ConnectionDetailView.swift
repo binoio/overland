@@ -176,7 +176,8 @@ public struct ConnectionDetailView: View {
                 usesHelper: viewModel.profile.privilegeMode == .helper && viewModel.helperManager.isUsable,
                 signInURL: viewModel.signInURL,
                 onReopenSignIn: { viewModel.reopenSignInPage() },
-                onCancel: { viewModel.disconnect() }
+                onCancel: { viewModel.disconnect() },
+                onDeliverCallback: { viewModel.deliverAuthCallback($0) }
             )
         }
         .frame(maxWidth: .infinity)

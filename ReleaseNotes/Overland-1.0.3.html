@@ -1,0 +1,11 @@
+<h2>Overland 1.0.3</h2>
+<p>Bug fixes and improvements for single sign-on (SSO) authentication and browser callback delivery.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Browser SSO Callback Handling:</strong> Fixed an issue where browser-based authentication (such as university or corporate SAML/Duo SSO) hung indefinitely at "Waiting for browser sign-in" even though the browser showed "Authentication complete". Registered a system-level AppleEvent handler (<code>kAEGetURL</code>) via <code>NSAppleEventManager</code> alongside SwiftUI <code>.onOpenURL</code> handlers to ensure <code>globalprotectcallback:</code> URLs are captured across all app states.</li>
+  <li><strong>LaunchServices Handler Registration:</strong> Overland now dynamically registers its active bundle path with LaunchServices on launch, ensuring macOS directs browser callbacks to the currently running instance.</li>
+  <li><strong>Manual Callback Fallback:</strong> Added a "Paste callback URL…" option to the sign-in progress view so users can manually paste the callback URL if browser extensions or security policies block custom protocol redirects.</li>
+  <li><strong>Enhanced Activity Logging:</strong> Added real-time log entries in the Activity Logs window when an authentication callback is received and relayed to the helper.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>

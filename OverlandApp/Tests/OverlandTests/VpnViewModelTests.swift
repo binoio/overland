@@ -193,6 +193,24 @@ final class VpnViewModelTests: XCTestCase {
         XCTAssertTrue(ok9)
     }
 
+    func testAppDelegateHandleURLPostsAuthCallback() async {
+        let appDelegate = AppDelegate()
+        var receivedAuthData: String?
+        let observer = NotificationCenter.default.addObserver(
+            forName: .overlandAuthCallbackReceived,
+            object: nil,
+            queue: .main
+        ) { notif in
+            receivedAuthData = notif.userInfo?["authData"] as? String
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+
+        let testURL = URL(string: "globalprotectcallback:cas-as=1&un=alice@example.com&token=secret123")!
+        appDelegate.handleURL(testURL)
+
+        XCTAssertEqual(receivedAuthData, "globalprotectcallback:cas-as=1&un=alice@example.com&token=secret123")
+    }
+
     func testHipRotationAdvancesIndexOnConnect() async {
         let storage = VpnViewModelStorage.ephemeral()
         let vm = makeViewModel(storage: storage)

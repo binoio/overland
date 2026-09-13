@@ -23,6 +23,7 @@ struct OverlandApp: App {
         // browser hands the globalprotectcallback: URL back to the app.
         Window("Overland", id: "main") {
             ContentView(viewModel: viewModel)
+                .onOpenURL { appDelegate.handleURL($0) }
         }
         .windowStyle(.automatic)
         .defaultSize(width: 820, height: 560)
@@ -99,6 +100,7 @@ struct OverlandApp: App {
                     openWindow(id: id)
                 }
             )
+            .onOpenURL { appDelegate.handleURL($0) }
         } label: {
             menuBarLabel
         }
