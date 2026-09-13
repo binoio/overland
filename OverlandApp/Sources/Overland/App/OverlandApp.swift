@@ -99,7 +99,7 @@ struct OverlandApp: App {
         } label: {
             menuBarLabel
         }
-        .menuBarExtraStyle(.window)
+        .menuBarExtraStyle(.menu)
     }
 
     @ViewBuilder
