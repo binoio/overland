@@ -41,8 +41,6 @@ public struct CommandLine: Equatable, Sendable {
 public struct GpclientCommandBuilder: Sendable {
     public var gpclientPath: String
     public var gpauthPath: String
-    public var sudoPath: String
-    public var askpassPath: String?
     /// Directory `gpauth` uses for `gpcallback.port`; forwarded as `TMPDIR`
     /// so the app knows where to find it when the browser callback arrives.
     public var tempDirectory: String?
@@ -50,16 +48,36 @@ public struct GpclientCommandBuilder: Sendable {
     public init(
         gpclientPath: String,
         gpauthPath: String,
-        sudoPath: String = "/usr/bin/sudo",
-        askpassPath: String? = nil,
         tempDirectory: String? = nil
     ) {
         self.gpclientPath = gpclientPath
         self.gpauthPath = gpauthPath
-        self.sudoPath = sudoPath
-        self.askpassPath = askpassPath
         self.tempDirectory = tempDirectory
     }
+
+    /// Every `gpclient` flag the tunnel command may carry, with the number of
+    /// values that follow it. The privileged helper refuses anything else, so
+    /// this list is the contract between the two sides.
+    public static let allowedTunnelFlags: [String: Int] = [
+        "--log-format": 1,
+        "--fix-openssl": 0,
+        "--ignore-tls-errors": 0,
+        "--gateway": 1,
+        "--auto-gateway": 0,
+        "--as-gateway": 0,
+        "--cookie-on-stdin": 0,
+        "--user": 1,
+        "--passwd-on-stdin": 0,
+        "--certificate": 1,
+        "--sslkey": 1,
+        "--script": 1,
+        "--hip": 0,
+        "--disable-ipv6": 0,
+        "--no-dtls": 0,
+        "--mtu": 1,
+        "--force-dpd": 1,
+        "--reconnect-timeout": 1
+    ]
 
     /// Whether the profile needs the unprivileged browser step.
     public static func needsBrowserAuth(_ profile: ConnectionProfile) -> Bool {
@@ -201,31 +219,5 @@ public struct GpclientCommandBuilder: Sendable {
     /// `gpclient disconnect` signals whichever gpclient owns the lock file.
     public func disconnectCommand(profile: ConnectionProfile) -> CommandLine {
         CommandLine(executable: gpclientPath, arguments: ["disconnect"], environment: baseEnvironment())
-    }
-
-    /// Wrap `command` with sudo according to `mode`. `.adminPrompt` and
-    /// `.direct` leave the command untouched: the former is executed by
-    /// `PrivilegedProcessRunner`, the latter needs no escalation.
-    public func escalate(_ command: CommandLine, mode: PrivilegeMode) -> CommandLine {
-        switch mode {
-        case .direct, .adminPrompt:
-            return command
-        case .sudoNonInteractive:
-            return CommandLine(
-                executable: sudoPath,
-                arguments: ["-n", "--", command.executable] + command.arguments,
-                environment: command.environment,
-                stdin: command.stdin
-            )
-        case .sudoAskpass:
-            var env = command.environment
-            if let askpassPath { env["SUDO_ASKPASS"] = askpassPath }
-            return CommandLine(
-                executable: sudoPath,
-                arguments: ["-A", "--", command.executable] + command.arguments,
-                environment: env,
-                stdin: command.stdin
-            )
-        }
     }
 }

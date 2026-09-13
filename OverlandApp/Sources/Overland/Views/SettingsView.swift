@@ -163,15 +163,10 @@ public struct SettingsView: View {
 
     private var privilegeHelp: String {
         switch viewModel.profile.privilegeMode {
+        case .helper:
+            return "A small root helper is registered with launchd and approved once in System Settings › Login Items & Extensions. After that, connecting never prompts. Requires a signed build."
         case .adminPrompt:
             return "macOS shows its standard authorization dialog each time the tunnel starts. It asks for an administrator's name and password, so it also works from a non-administrator account. Nothing is installed system-wide."
-        case .sudoAskpass:
-            return "A password dialog appears when the tunnel starts. sudo only accepts the password of the account running this app, which must be an administrator."
-        case .sudoNonInteractive:
-            let gp = viewModel.resolvedGpclientPath ?? "/path/to/gpclient"
-            return "Requires a sudoers rule such as:\n\(NSUserName()) ALL=(root) NOPASSWD: \(gp)"
-        case .direct:
-            return "gpclient runs with this app's privileges. Only works if gpclient is setuid root or the app itself runs as root."
         }
     }
 

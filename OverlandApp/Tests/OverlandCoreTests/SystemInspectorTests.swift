@@ -125,25 +125,3 @@ final class BinaryLocatorTests: XCTestCase {
         XCTAssertNil(BinaryLocator(fileExists: { _ in true }, isExecutable: { _ in false }, bundleURL: nil, searchPath: [], workingDirectory: "/tmp").resolveVpncScript(custom: nil))
     }
 }
-
-final class SudoAskpassTests: XCTestCase {
-    func testInstallWritesExecutableScript() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("gp-askpass-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let askpass = SudoAskpass(directory: dir)
-        let path = try askpass.install()
-
-        XCTAssertEqual(path, dir.appendingPathComponent("overland-askpass.sh").path)
-        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: path))
-        let attrs = try FileManager.default.attributesOfItem(atPath: path)
-        XCTAssertEqual((attrs[.posixPermissions] as? Int) ?? 0, 0o700)
-        let body = try String(contentsOfFile: path, encoding: .utf8)
-        XCTAssertTrue(body.hasPrefix("#!/bin/sh"))
-        XCTAssertTrue(body.contains("display dialog"))
-        XCTAssertTrue(body.contains("with hidden answer"))
-
-        // Second install is idempotent.
-        XCTAssertEqual(try askpass.install(), path)
-    }
-}

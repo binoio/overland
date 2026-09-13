@@ -46,21 +46,34 @@ public enum BridgeError: Error, LocalizedError, Equatable {
 /// authorization dialog (`PrivilegedProcessRunner`), or `sudo`.
 public actor GpclientBridgeService: BridgeServiceProtocol {
     public typealias RunnerFactory = @Sendable () -> any ProcessRunning
-    public typealias PrivilegedRunnerFactory = @Sendable (PrivilegeMode) -> any ProcessRunning
+    /// Returns nil when `mode` is not usable right now (helper not approved,
+    /// unsigned build); the bridge then falls back to the administrator dialog.
+    public typealias PrivilegedRunnerFactory = @Sendable (PrivilegeMode) -> (any ProcessRunning)?
     public typealias OrphanScanner = @Sendable () -> [PrivilegedProcessRunner.OrphanSession]
     /// Produces a runner whose `run` re-attaches to the given orphan instead of launching anything.
     public typealias AdoptedRunnerFactory = @Sendable (PrivilegedProcessRunner.OrphanSession) -> any ProcessRunning
+    /// A tunnel the privileged helper is already running; `runner.run` replays
+    /// and streams its output, `arguments` is the gpclient argv it was given.
+    public struct AttachedTunnel: Sendable {
+        public var runner: any ProcessRunning
+        public var arguments: [String]
+        public init(runner: any ProcessRunning, arguments: [String]) {
+            self.runner = runner
+            self.arguments = arguments
+        }
+    }
+    public typealias HelperAttach = @Sendable () async -> AttachedTunnel?
 
     private let bus = BridgeEventBus()
     private let parser = GpclientOutputParser()
     private let locator: BinaryLocator
-    private let askpass: SudoAskpass
     private let tunInspector: TunInterfaceInspector
     private let callbackForwarder: AuthCallbackForwarder
     private let makeRunner: RunnerFactory
     private let makePrivilegedRunner: PrivilegedRunnerFactory
     private let scanOrphans: OrphanScanner
     private let makeAdoptedRunner: AdoptedRunnerFactory
+    private let attachToHelper: HelperAttach
     private let temporaryDirectory: URL
     private let disconnectGracePeriod: TimeInterval
 
@@ -77,28 +90,28 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
     public init(
         customGpclientPath: String? = nil,
         locator: BinaryLocator = BinaryLocator(),
-        askpass: SudoAskpass = SudoAskpass(),
         tunInspector: TunInterfaceInspector = TunInterfaceInspector(),
         temporaryDirectory: URL = URL(fileURLWithPath: NSTemporaryDirectory()),
         disconnectGracePeriod: TimeInterval = 8,
         runnerFactory: @escaping RunnerFactory = { ProcessRunner() },
         privilegedRunnerFactory: PrivilegedRunnerFactory? = nil,
         orphanScanner: @escaping OrphanScanner = { PrivilegedProcessRunner.findOrphans() },
-        adoptedRunnerFactory: @escaping AdoptedRunnerFactory = { AdoptedSessionRunner(orphan: $0) }
+        adoptedRunnerFactory: @escaping AdoptedRunnerFactory = { AdoptedSessionRunner(orphan: $0) },
+        helperAttach: @escaping HelperAttach = { nil }
     ) {
         self.customGpclientPath = customGpclientPath
         self.locator = locator
-        self.askpass = askpass
         self.tunInspector = tunInspector
         self.temporaryDirectory = temporaryDirectory
         self.callbackForwarder = AuthCallbackForwarder(temporaryDirectory: temporaryDirectory)
         self.disconnectGracePeriod = disconnectGracePeriod
         self.makeRunner = runnerFactory
         self.makePrivilegedRunner = privilegedRunnerFactory ?? { mode in
-            mode == .adminPrompt ? PrivilegedProcessRunner() : runnerFactory()
+            mode == .adminPrompt ? PrivilegedProcessRunner() : nil
         }
         self.scanOrphans = orphanScanner
         self.makeAdoptedRunner = adoptedRunnerFactory
+        self.attachToHelper = helperAttach
     }
 
     public func setCustomGpclientPath(_ path: String?) {
@@ -142,14 +155,9 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         if GpclientCommandBuilder.needsBrowserAuth(profile), gpauth == nil {
             throw BridgeError.gpauthNotFound
         }
-        var askpassPath: String? = nil
-        if profile.privilegeMode == .sudoAskpass {
-            askpassPath = try askpass.install()
-        }
         return GpclientCommandBuilder(
             gpclientPath: gpclient,
             gpauthPath: gpauth ?? "",
-            askpassPath: askpassPath,
             tempDirectory: temporaryDirectory.path
         )
     }
@@ -318,46 +326,72 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
     // MARK: - Privileged phase
 
     private func startTunnel(builder: GpclientCommandBuilder, profile: ConnectionProfile, password: String?, authResult: String?) {
-        let command = builder.escalate(
-            builder.tunnelCommand(profile: profile, password: password, authResult: authResult),
-            mode: profile.privilegeMode
-        )
-        log(.debug, "Running (privileged, \(profile.privilegeMode.rawValue)): \(command.displayString)")
+        let command = builder.tunnelCommand(profile: profile, password: password, authResult: authResult)
 
-        switch profile.privilegeMode {
-        case .adminPrompt, .sudoAskpass:
-            setState(.connecting(status: "Requesting administrator privileges…"))
-        case .sudoNonInteractive, .direct:
-            setState(.connecting(status: "Connecting to \(profile.portal)…"))
+        var mode = profile.privilegeMode
+        var runner = makePrivilegedRunner(mode)
+        if runner == nil, mode != .adminPrompt {
+            log(.warn, "The privileged helper is not available (not approved, or an unsigned build); using the administrator authorization dialog instead")
+            mode = .adminPrompt
+            runner = makePrivilegedRunner(.adminPrompt)
+        }
+        guard let runner else {
+            setState(.failed(message: BridgeError.privilegeDenied.localizedDescription))
+            return
         }
 
-        superviseTunnel(runner: makePrivilegedRunner(profile.privilegeMode), command: command, interfacesBefore: tunInspector.snapshot())
+        log(.debug, "Running (privileged, \(mode.rawValue)): \(command.displayString)")
+        switch mode {
+        case .helper:
+            setState(.connecting(status: "Connecting to \(profile.portal)…"))
+        case .adminPrompt:
+            setState(.connecting(status: "Requesting administrator privileges…"))
+        }
+
+        superviseTunnel(runner: runner, command: command, interfacesBefore: tunInspector.snapshot())
     }
 
     /// Adopt a tunnel left behind by a previous app process (quit or crash
     /// while connected). Its log is replayed, so the parser recovers the
     /// gateway, connected state and session lifetime; Disconnect works as usual.
     public func adoptOrphanedSession() async -> Bool {
-        guard currentState.isDisconnected, tunnelRunner == nil, let orphan = scanOrphans().first else { return false }
+        guard currentState.isDisconnected, tunnelRunner == nil else { return false }
 
+        if let attached = await attachToHelper() {
+            let portal = Self.server(in: attached.arguments)
+            log(.info, "Re-attaching to the VPN session the privileged helper is running (\(portal ?? "unknown portal"))")
+            beginAttached(portal: portal)
+            superviseTunnel(runner: attached.runner, command: CommandLine(executable: "", arguments: attached.arguments), interfacesBefore: [])
+            return true
+        }
+
+        guard let orphan = scanOrphans().first else { return false }
         let server = orphan.server ?? "the previous session"
         log(.info, "Re-attaching to the VPN session left running by a previous Overland process (pid \(orphan.pid), \(server))")
+        beginAttached(portal: orphan.server)
+        // No "before" snapshot exists for an adopted tunnel; any utun that
+        // carries an IPv4 address is a candidate, and a single one is taken.
+        superviseTunnel(runner: makeAdoptedRunner(orphan), command: CommandLine(executable: "", arguments: orphan.command), interfacesBefore: [])
+        return true
+    }
+
+    private func beginAttached(portal: String?) {
         disconnectRequested = false
         sessionLifetime = nil
         activeDetails = ConnectedDetails(
-            portal: orphan.server ?? "",
-            gatewayName: server,
-            gatewayServer: orphan.server ?? "",
+            portal: portal ?? "",
+            gatewayName: portal ?? "the previous session",
+            gatewayServer: portal ?? "",
             cipher: nil,
             connectedAt: Date()
         )
         setState(.connecting(status: "Re-attaching to the running session…"))
+    }
 
-        // No "before" snapshot exists for an adopted tunnel; any utun that
-        // carries an IPv4 address is a candidate, and a single one is taken.
-        let runner = makeAdoptedRunner(orphan)
-        superviseTunnel(runner: runner, command: CommandLine(executable: "", arguments: orphan.command), interfacesBefore: [])
-        return true
+    /// The portal or gateway a `gpclient connect` argv names, if recognisable.
+    static func server(in arguments: [String]) -> String? {
+        guard let i = arguments.firstIndex(of: "connect"), i + 1 < arguments.count else { return nil }
+        return arguments[i + 1]
     }
 
     /// Run `command` on `runner` and drive the connection state from its output

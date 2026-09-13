@@ -25,26 +25,27 @@ public enum BrowserMode: String, Codable, CaseIterable, Sendable {
 }
 
 /// How the app obtains root for the tunnel phase. OpenConnect must create the
-/// `utun` device as root, so `gpclient connect` is wrapped accordingly.
+/// `utun` device as root, so `gpclient connect` runs under one of these.
 public enum PrivilegeMode: String, Codable, CaseIterable, Sendable {
-    /// The standard macOS administrator authorization dialog ("Overland
-    /// wants to make changes"), obtained through `osascript … with
-    /// administrator privileges`. Supports Touch ID where the system allows it.
+    /// The Overland privileged helper: a launchd daemon registered with
+    /// SMAppService, approved once in System Settings, driven over XPC.
+    case helper
+    /// The standard macOS administrator authorization dialog on every
+    /// connect (`osascript … with administrator privileges`). Fallback for
+    /// unsigned builds or when the helper is not approved.
     case adminPrompt
-    /// `sudo -A` with a password dialog supplied via `SUDO_ASKPASS`.
-    case sudoAskpass
-    /// `sudo -n` — for users who configured a NOPASSWD sudoers rule for gpclient.
-    case sudoNonInteractive
-    /// Run gpclient directly (setuid binary, or the app itself runs as root).
-    case direct
 
     public var title: String {
         switch self {
-        case .adminPrompt: return "macOS administrator authorization (recommended)"
-        case .sudoAskpass: return "sudo with password dialog"
-        case .sudoNonInteractive: return "sudo without prompt (NOPASSWD sudoers rule)"
-        case .direct: return "No privilege escalation"
+        case .helper: return "Privileged helper (approve once, no prompts)"
+        case .adminPrompt: return "Administrator authorization dialog on every connect"
         }
+    }
+
+    /// Modes that existed in earlier builds decode to the dialog.
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = PrivilegeMode(rawValue: raw) ?? .adminPrompt
     }
 }
 
@@ -94,7 +95,7 @@ public struct ConnectionProfile: Identifiable, Codable, Equatable, Sendable {
         enableHIP: Bool = false,
         asGateway: Bool = false,
         vpncScriptPath: String? = nil,
-        privilegeMode: PrivilegeMode = .adminPrompt,
+        privilegeMode: PrivilegeMode = .helper,
         autoConnect: Bool = false,
         knownGateways: [Gateway] = []
     ) {

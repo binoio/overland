@@ -76,7 +76,8 @@ final class GpclientBridgeServiceTests: XCTestCase {
         gpclientAvailable: Bool = true,
         gpauthAvailable: Bool = true,
         privilegedScripts: [FakeProcessRunner.Script]? = nil,
-        privilegedJournal: FakeProcessRunner.Journal? = nil
+        privilegedJournal: FakeProcessRunner.Journal? = nil,
+        helperAvailable: Bool = true
     ) -> GpclientBridgeService {
         let locator = BinaryLocator(
             fileExists: { _ in true },
@@ -95,13 +96,13 @@ final class GpclientBridgeServiceTests: XCTestCase {
         return GpclientBridgeService(
             customGpclientPath: "/fake/gpclient",
             locator: locator,
-            askpass: SudoAskpass(directory: tempDir),
             tunInspector: TunInterfaceInspector(readIfconfig: { ifconfig.read() }),
             temporaryDirectory: tempDir,
             disconnectGracePeriod: 1,
             runnerFactory: { FakeProcessRunner(scripts: scripts, journal: journal) },
-            privilegedRunnerFactory: { _ in
-                FakeProcessRunner(scripts: privilegedScripts ?? scripts, journal: privilegedJournal ?? journal)
+            privilegedRunnerFactory: { mode in
+                guard helperAvailable || mode == .adminPrompt else { return nil }
+                return FakeProcessRunner(scripts: privilegedScripts ?? scripts, journal: privilegedJournal ?? journal)
             },
             orphanScanner: { [] }
         )
@@ -155,7 +156,7 @@ final class GpclientBridgeServiceTests: XCTestCase {
         XCTAssertEqual(details.assignedIP, "10.250.4.18")
 
         XCTAssertTrue(recorder.states.contains { if case .connecting(let s) = $0 { return s.contains("browser") } else { return false } })
-        XCTAssertTrue(recorder.states.contains { if case .connecting(let s) = $0 { return s.contains("administrator") } else { return false } })
+        XCTAssertFalse(recorder.states.contains { if case .connecting(let s) = $0 { return s.contains("administrator") } else { return false } }, "helper mode never mentions the dialog")
 
         let hasExpiry = await recorder.wait { events in
             events.contains { if case .state(.connected(let d)) = $0 { return d.sessionExpiresAt != nil && d.allowExtendSession } else { return false } }
@@ -200,7 +201,6 @@ final class GpclientBridgeServiceTests: XCTestCase {
         let service = GpclientBridgeService(
             customGpclientPath: "/fake/gpclient",
             locator: BinaryLocator(fileExists: { _ in true }, isExecutable: { _ in true }, bundleURL: nil, searchPath: [], workingDirectory: "/x"),
-            askpass: SudoAskpass(directory: tempDir),
             tunInspector: TunInterfaceInspector(readIfconfig: { ifconfig.read() }),
             temporaryDirectory: tempDir,
             disconnectGracePeriod: 1,
@@ -262,18 +262,59 @@ final class GpclientBridgeServiceTests: XCTestCase {
         try await service.disconnect()
     }
 
-    func testSudoAskpassModeWrapsTunnelWithSudo() async throws {
+    func testFallsBackToAdminDialogWhenHelperUnavailable() async throws {
         let journal = FakeProcessRunner.Journal()
         let service = makeService(
-            scripts: [.init(matches: { $0.executable == "/usr/bin/sudo" }, lines: [], exitCode: 0)],
-            journal: journal
+            scripts: [.init(matches: Self.isTunnel, lines: tunnelUpLines, waitForSignal: true)],
+            journal: journal,
+            helperAvailable: false
         )
-        var p = passwordProfile()
-        p.privilegeMode = .sudoAskpass
-        try await service.connect(profile: p, password: "pw")
-        _ = await EventRecorderWait.settle()
-        XCTAssertEqual(journal.commands.first?.executable, "/usr/bin/sudo")
-        XCTAssertEqual(journal.commands.first?.environment["SUDO_ASKPASS"], tempDir.appendingPathComponent("overland-askpass.sh").path)
+        let recorder = EventRecorder()
+        recorder.attach(await service.events())
+        defer { recorder.stop() }
+
+        try await service.connect(profile: passwordProfile(), password: "pw")
+        let connected = await recorder.wait { $0.contains { if case .state(.connected) = $0 { return true } else { return false } } }
+        XCTAssertTrue(connected, "states: \(recorder.states)")
+        XCTAssertTrue(recorder.states.contains { if case .connecting(let s) = $0 { return s.contains("administrator") } else { return false } })
+        XCTAssertTrue(recorder.logs.contains { $0.level == .warn && $0.message.contains("helper is not available") })
+        try await service.disconnect()
+    }
+
+    func testAdoptsHelperTunnelFirst() async throws {
+        let journal = FakeProcessRunner.Journal()
+        let replay = tunnelUpLines
+        let ifconfig = IfconfigState()
+        ifconfig.before = "utun7: flags=0 mtu 1400\n\tinet 172.20.0.9 --> 172.20.0.9 netmask 0xffffffff\n"
+        ifconfig.after = ifconfig.before
+        let service = GpclientBridgeService(
+            customGpclientPath: "/fake/gpclient",
+            locator: BinaryLocator(fileExists: { _ in true }, isExecutable: { _ in true }, bundleURL: nil, searchPath: [], workingDirectory: "/x"),
+            tunInspector: TunInterfaceInspector(readIfconfig: { ifconfig.read() }),
+            temporaryDirectory: tempDir,
+            disconnectGracePeriod: 1,
+            orphanScanner: { XCTFail("helper attach must win"); return [] },
+            helperAttach: {
+                GpclientBridgeService.AttachedTunnel(
+                    runner: FakeProcessRunner(scripts: [.init(matches: { _ in true }, lines: replay, waitForSignal: true)], journal: journal),
+                    arguments: ["--log-format", "json", "connect", "vpn.example.com", "--auto-gateway"]
+                )
+            }
+        )
+        let recorder = EventRecorder()
+        recorder.attach(await service.events())
+        defer { recorder.stop() }
+
+        let adopted = await service.adoptOrphanedSession()
+        XCTAssertTrue(adopted)
+        let connected = await recorder.wait { $0.contains { if case .state(.connected) = $0 { return true } else { return false } } }
+        XCTAssertTrue(connected, "states: \(recorder.states)")
+        guard case .connected(let details)? = recorder.states.last(where: { $0.isConnected }) else { return XCTFail() }
+        XCTAssertEqual(details.portal, "vpn.example.com")
+        XCTAssertEqual(details.assignedIP, "172.20.0.9")
+        XCTAssertTrue(recorder.logs.contains { $0.message.contains("privileged helper is running") })
+        try await service.disconnect()
+        XCTAssertEqual(journal.interrupts, 1)
     }
 
     func testBrowserSignInFailureIsReported() async {
@@ -319,7 +360,6 @@ final class GpclientBridgeServiceTests: XCTestCase {
         let cancelling = GpclientBridgeService(
             customGpclientPath: "/fake/gpclient",
             locator: BinaryLocator(fileExists: { _ in true }, isExecutable: { _ in true }, bundleURL: nil, searchPath: [], workingDirectory: "/x"),
-            askpass: SudoAskpass(directory: tempDir),
             tunInspector: TunInterfaceInspector(readIfconfig: { "" }),
             temporaryDirectory: tempDir,
             privilegedRunnerFactory: { _ in ThrowingRunner(error: PrivilegedRunError.authorizationCancelled) }
@@ -330,25 +370,6 @@ final class GpclientBridgeServiceTests: XCTestCase {
         defer { recorder.stop() }
 
         try await cancelling.connect(profile: passwordProfile(), password: "pw")
-        let failed = await recorder.wait { events in
-            events.contains { if case .state(.failed(let m)) = $0 { return m.contains("Administrator authorization") } else { return false } }
-        }
-        XCTAssertTrue(failed, "states: \(recorder.states)")
-    }
-
-    func testSudoDenialIsReportedAsPrivilegeProblem() async throws {
-        let service = makeService(
-            scripts: [.init(matches: { $0.executable == "/usr/bin/sudo" }, lines: [(.stderr, "sudo: a password is required")], exitCode: 1)],
-            journal: FakeProcessRunner.Journal()
-        )
-        let recorder = EventRecorder()
-        recorder.attach(await service.events())
-        defer { recorder.stop() }
-
-        var p = passwordProfile()
-        p.privilegeMode = .sudoAskpass
-        try await service.connect(profile: p, password: "pw")
-
         let failed = await recorder.wait { events in
             events.contains { if case .state(.failed(let m)) = $0 { return m.contains("Administrator authorization") } else { return false } }
         }
@@ -505,7 +526,6 @@ final class GpclientBridgeServiceTests: XCTestCase {
         let service = GpclientBridgeService(
             customGpclientPath: "/fake/gpclient",
             locator: BinaryLocator(fileExists: { _ in true }, isExecutable: { _ in true }, bundleURL: nil, searchPath: [], workingDirectory: "/x"),
-            askpass: SudoAskpass(directory: tempDir),
             tunInspector: TunInterfaceInspector(readIfconfig: { "" }),
             temporaryDirectory: tempDir,
             disconnectGracePeriod: 0.3,

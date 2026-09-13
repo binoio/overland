@@ -6,7 +6,7 @@ final class ConnectionProfileTests: XCTestCase {
         let profile = ConnectionProfile.default
         XCTAssertEqual(profile.portal, "")
         XCTAssertEqual(profile.authMethod, .credentials)
-        XCTAssertEqual(profile.privilegeMode, .adminPrompt)
+        XCTAssertEqual(profile.privilegeMode, .helper)
         XCTAssertEqual(profile.browserMode, .systemDefault)
         XCTAssertEqual(profile.reconnectTimeout, 300)
         XCTAssertFalse(profile.disableIPv6)
@@ -30,7 +30,7 @@ final class ConnectionProfileTests: XCTestCase {
             reconnectTimeout: 60,
             enableHIP: true,
             vpncScriptPath: "/opt/vpnc-script",
-            privilegeMode: .sudoNonInteractive,
+            privilegeMode: .adminPrompt,
             autoConnect: true,
             knownGateways: [Gateway(name: "GW1", server: "gw1.corp.com", priority: 1)]
         )
@@ -53,10 +53,22 @@ final class ConnectionProfileTests: XCTestCase {
         let decoded = try JSONDecoder().decode(ConnectionProfile.self, from: Data(legacy.utf8))
         XCTAssertEqual(decoded.portal, "vpn.old.com")
         XCTAssertEqual(decoded.username, "bob")
-        XCTAssertEqual(decoded.privilegeMode, .adminPrompt)
+        XCTAssertEqual(decoded.privilegeMode, .helper)
         XCTAssertEqual(decoded.browserMode, .systemDefault)
         XCTAssertEqual(decoded.reconnectTimeout, 300)
         XCTAssertTrue(decoded.knownGateways.isEmpty)
+    }
+
+    /// Modes removed since earlier builds decode to the dialog rather than
+    /// failing the whole profile.
+    func testRemovedPrivilegeModesDecodeToAdminPrompt() throws {
+        for legacy in ["sudoAskpass", "sudoNonInteractive", "direct", "bogus"] {
+            let json = #"{"portal":"x","privilegeMode":"\#(legacy)"}"#
+            let decoded = try JSONDecoder().decode(ConnectionProfile.self, from: Data(json.utf8))
+            XCTAssertEqual(decoded.privilegeMode, .adminPrompt, legacy)
+        }
+        let helper = try JSONDecoder().decode(ConnectionProfile.self, from: Data(#"{"portal":"x","privilegeMode":"helper"}"#.utf8))
+        XCTAssertEqual(helper.privilegeMode, .helper)
     }
 }
 

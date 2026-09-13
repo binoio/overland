@@ -40,7 +40,6 @@ final class RealGpclientIntegrationTests: XCTestCase {
 
         let service = GpclientBridgeService(
             customGpclientPath: gpclient,
-            askpass: SudoAskpass(directory: tmp),
             temporaryDirectory: tmp
         )
         let recorder = EventRecorder()

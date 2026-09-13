@@ -5,8 +5,6 @@ final class GpclientCommandBuilderTests: XCTestCase {
     private let builder = GpclientCommandBuilder(
         gpclientPath: "/opt/gp/gpclient",
         gpauthPath: "/opt/gp/gpauth",
-        sudoPath: "/usr/bin/sudo",
-        askpassPath: "/tmp/askpass.sh",
         tempDirectory: "/tmp/gp-test"
     )
 
@@ -126,27 +124,17 @@ final class GpclientCommandBuilderTests: XCTestCase {
         XCTAssertEqual(pwCmd.stdin, "pw\n")
     }
 
-    // MARK: Escalation
+    // MARK: Allow-list contract with the helper
 
-    func testEscalateAskpassSudo() {
-        let cmd = builder.escalate(CommandLine(executable: "/opt/gp/gpclient", arguments: ["connect", "x"], stdin: "c\n"), mode: .sudoAskpass)
-        XCTAssertEqual(cmd.executable, "/usr/bin/sudo")
-        XCTAssertEqual(cmd.arguments, ["-A", "--", "/opt/gp/gpclient", "connect", "x"])
-        XCTAssertEqual(cmd.stdin, "c\n")
-        XCTAssertEqual(cmd.environment["SUDO_ASKPASS"], "/tmp/askpass.sh")
-    }
-
-    func testEscalateNonInteractiveSudo() {
-        let cmd = builder.escalate(CommandLine(executable: "/opt/gp/gpclient", arguments: ["connect"]), mode: .sudoNonInteractive)
-        XCTAssertEqual(cmd.executable, "/usr/bin/sudo")
-        XCTAssertEqual(Array(cmd.arguments.prefix(3)), ["-n", "--", "/opt/gp/gpclient"])
-        XCTAssertNil(cmd.environment["SUDO_ASKPASS"])
-    }
-
-    func testEscalateAdminPromptAndDirectLeaveCommandAlone() {
-        let original = CommandLine(executable: "/opt/gp/gpclient", arguments: ["connect"], stdin: "x")
-        XCTAssertEqual(builder.escalate(original, mode: .adminPrompt), original)
-        XCTAssertEqual(builder.escalate(original, mode: .direct), original)
+    func testEveryEmittedTunnelFlagIsInTheAllowList() {
+        var profile = ConnectionProfile(portal: "vpn.example.com", selectedGatewayServer: "gw", username: "u", authMethod: .credentials)
+        profile.vpncScriptPath = "/s"; profile.certificatePath = "/c"; profile.sslKeyPath = "/k"
+        profile.fixOpenSSL = true; profile.ignoreTLSErrors = true; profile.enableHIP = true
+        profile.disableIPv6 = true; profile.noDTLS = true; profile.mtu = 1; profile.forceDPD = 1; profile.reconnectTimeout = 1
+        let args = builder.tunnelCommand(profile: profile, password: "p", authResult: nil).arguments
+        let flags = args.filter { $0.hasPrefix("--") }
+        XCTAssertEqual(Set(flags).subtracting(GpclientCommandBuilder.allowedTunnelFlags.keys), [], "every flag the app emits must be accepted by the helper")
+        XCTAssertEqual(Set(GpclientCommandBuilder.allowedTunnelFlags.keys).subtracting(flags + ["--auto-gateway", "--as-gateway", "--cookie-on-stdin"]), [], "allow-list should not carry flags the app never emits")
     }
 
     func testDisplayStringQuotesSpaces() {
