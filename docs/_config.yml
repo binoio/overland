@@ -3,18 +3,8 @@ description: "A native macOS menu bar client for enterprise VPN portals, built o
 url: "https://bino.io"
 baseurl: "/overland"
 
-markdown: kramdown
-highlighter: rouge
-theme: minima
-plugins:
-  - jekyll-feed
-  - jekyll-sitemap
-
 exclude:
   - bsd-source-build.md
-  - Gemfile
-  - Gemfile.lock
   - vendor/
   - .bundle/
-  - .sass-cache/
   - .jekyll-cache/

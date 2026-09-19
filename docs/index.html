@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Overland - VPN Portals from the macOS Menu Bar</title>
+    <meta name="description" content="A native macOS menu bar client for enterprise VPN portals, built on OpenConnect. Sign in with your browser, approve once, and connect with one click.">
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --fg: #1d1d1f;
+            --secondary: #86868b;
+            --accent: #8D6E63;
+            --accent-soft: #A1887F;
+            --sky: #5EC0F0;
+            --card-bg: #f5f5f7;
+            --border: #d2d2d7;
+            --radius: 16px;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #000000;
+                --fg: #f5f5f7;
+                --secondary: #86868b;
+                --accent: #A1887F;
+                --accent-soft: #BCAAA4;
+                --sky: #7FD1F5;
+                --card-bg: #1c1c1e;
+                --border: #38383a;
+            }
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--fg);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        nav {
+            padding: 24px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+            font-weight: 700;
+            font-size: 1.3rem;
+        }
+
+        .logo img {
+            width: 44px;
+            height: 44px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        header {
+            text-align: center;
+            padding: 80px 0 60px;
+        }
+
+        .app-icon {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            display: block;
+            border-radius: 26px;
+            box-shadow: 0 12px 30px rgba(94, 192, 240, 0.35);
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin: 0 0 16px;
+            letter-spacing: -0.015em;
+        }
+
+        .subtitle {
+            font-size: 1.4rem;
+            color: var(--secondary);
+            max-width: 620px;
+            margin: 0 auto 36px;
+        }
+
+        .cta {
+            display: inline-block;
+            background-color: var(--accent);
+            color: #fff;
+            padding: 14px 28px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-decoration: none;
+            transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 14px rgba(141, 110, 99, 0.4);
+        }
+
+        .cta:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(141, 110, 99, 0.5);
+        }
+
+        .requirements {
+            display: block;
+            margin-top: 20px;
+            color: var(--secondary);
+            font-size: 0.95rem;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin: 60px 0;
+        }
+
+        .feature-card {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+
+        .feature-card h3 {
+            font-size: 1.3rem;
+            margin: 0 0 12px;
+        }
+
+        .feature-card p {
+            color: var(--secondary);
+            margin: 0;
+        }
+
+        .feature-card code {
+            color: var(--accent);
+        }
+
+        footer {
+            text-align: center;
+            padding: 40px 0;
+            color: var(--secondary);
+            font-size: 0.9rem;
+            border-top: 1px solid var(--border);
+            margin-top: 60px;
+        }
+
+        footer p {
+            margin: 6px 0;
+        }
+
+        footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 2.5rem; }
+            .subtitle { font-size: 1.15rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <a href="#" class="logo">
+                <img src="icon.png" alt="Overland Icon">
+                Overland
+            </a>
+            <a href="https://bino.io" style="color: var(--secondary); text-decoration: none; font-weight: 500;">Bino.io Apps</a>
+        </nav>
+
+        <header>
+            <img src="icon.png" alt="Overland App Icon" class="app-icon">
+            <h1>Overland</h1>
+            <p class="subtitle">Connect to your organization&rsquo;s VPN portal from the menu bar &mdash; sign in with your browser, approve once, and never see a password prompt for the tunnel again.</p>
+            <a href="https://github.com/binoio/overland/releases/latest" class="cta">Download for macOS</a>
+            <span class="requirements">Requires macOS 14.0 or later</span>
+        </header>
+
+        <section class="features">
+            <div class="feature-card">
+                <h3>Single Sign-On</h3>
+                <p>SAML sign-in happens in your own browser, then hands back to the app. Password and client-certificate logins work too.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Approve Once</h3>
+                <p>A small privileged helper, approved once in System Settings, opens the tunnel. No sudo, no password prompt on every connect.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Lives in the Menu Bar</h3>
+                <p>Connect, disconnect and see status from a standard menu; optionally hide the Dock icon entirely.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Live Session View</h3>
+                <p>Gateway, session expiry, tunnel address and live throughput while connected.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Survives Restarts</h3>
+                <p>Quit disconnects cleanly; after a crash the app re-attaches to the running tunnel with its log intact.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Built on OpenConnect</h3>
+                <p>The proven <code>gpclient</code> CLI and OpenConnect do the VPN work; Overland is the native front end.</p>
+            </div>
+        </section>
+
+        <footer>
+            <p>&copy; 2026 Michael Bino</p>
+            <p>Part of the Binoio Family of Apps</p>
+            <p>Released under the GPL-3.0 License. <a href="https://github.com/binoio/overland">View on GitHub</a></p>
+        </footer>
+    </div>
+</body>
+</html>
