@@ -26,7 +26,7 @@ struct OverlandApp: App {
                 .onOpenURL { appDelegate.handleURL($0) }
         }
         .windowStyle(.automatic)
-        .defaultSize(width: 820, height: 560)
+        .defaultSize(width: 980, height: 760)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Overland") { openWindow(id: "about") }
