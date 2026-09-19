@@ -1,14 +1,14 @@
 ---
 layout: default
 title: Overland
-description: Overland is a native macOS client for GlobalProtect VPN portals, built on gpclient from GlobalProtect-openconnect.
+description: Overland is a native macOS menu bar client for enterprise VPN portals, built on OpenConnect.
 ---
 
 <section class="hero">
   <div class="container">
     <img src="{{ '/icon.png' | relative_url }}" alt="" width="128" height="128" style="border-radius: 28px; margin-bottom: 1rem;">
     <h1>Overland</h1>
-    <p>Connect to a GlobalProtect VPN portal from the menu bar — sign in with your browser, approve once, and never see a password prompt for the tunnel again.</p>
+    <p>Connect to your organization's VPN portal from the menu bar — sign in with your browser, approve once, and never see a password prompt for the tunnel again. Works with the enterprise SSL VPN portals OpenConnect supports through its <code>gp</code> protocol.</p>
     <div class="hero-actions">
       <a href="https://github.com/binoio/overland/releases/latest" class="btn btn-primary">
         <i class="fas fa-download"></i>
@@ -59,8 +59,8 @@ description: Overland is a native macOS client for GlobalProtect VPN portals, bu
 
       <div class="feature-card">
         <div class="feature-icon"><i class="fas fa-terminal"></i></div>
-        <h4>Built on gpclient</h4>
-        <p>The proven CLI from GlobalProtect-openconnect and OpenConnect do the VPN work; Overland is the native front end.</p>
+        <h4>Built on OpenConnect</h4>
+        <p>The proven <code>gpclient</code> CLI and OpenConnect do the VPN work; Overland is the native front end.</p>
       </div>
     </div>
   </div>
@@ -73,7 +73,7 @@ description: Overland is a native macOS client for GlobalProtect VPN portals, bu
     <div class="features-grid">
       <div class="feature-card">
         <h4>1. Sign in as you</h4>
-        <p><code>gpauth</code> runs unprivileged: it opens your browser for the portal's SAML page and receives the result through the <code>globalprotectcallback:</code> URL macOS routes to Overland.</p>
+        <p><code>gpauth</code> runs unprivileged: it opens your browser for the portal's SAML page and receives the result through the callback URL macOS routes to Overland.</p>
       </div>
 
       <div class="feature-card">

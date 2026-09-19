@@ -1,5 +1,5 @@
 title: "Overland"
-description: "A native macOS client for GlobalProtect VPN portals, built on gpclient from GlobalProtect-openconnect."
+description: "A native macOS menu bar client for enterprise VPN portals, built on OpenConnect."
 url: "https://bino.io"
 baseurl: "/overland"
 

@@ -4,9 +4,11 @@
   <img src="docs/icon.png" width="160" alt="Overland icon">
 </p>
 
-**Overland is a native macOS client for GlobalProtect VPN portals.** Sign in
-with your browser, approve a small privileged helper once, and connect or
-disconnect from the menu bar without ever typing a password for the tunnel.
+**Overland is a native macOS menu bar client for enterprise VPN portals, built
+on OpenConnect.** Sign in with your browser, approve a small privileged helper
+once, and connect or disconnect from the menu bar without ever typing a
+password for the tunnel. It works with the SSL VPN portals OpenConnect supports
+through its `gp` protocol.
 
 Overland is a front end: the VPN work is done by [`gpclient`](apps/gpclient)
 and [`gpauth`](apps/gpauth) from Kevin Yue's
