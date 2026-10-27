@@ -101,6 +101,10 @@ if (( ! SKIP_GPCLIENT )); then
         echo "warning: gpauth not found at ${GPAUTH}; SAML/SSO portals will not work" >&2
     fi
 
+    if [[ -d "${GPCLIENT:h}/Frameworks" ]]; then
+        cp "${GPCLIENT:h}/Frameworks"/*.dylib "${FRAMEWORKS_DIR}/" 2>/dev/null || true
+    fi
+
     BREW_PREFIX="$(brew --prefix 2>/dev/null || true)"
 
     # Collect every non-system dylib gpclient (transitively) links against.

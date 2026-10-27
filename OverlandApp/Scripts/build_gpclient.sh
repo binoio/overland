@@ -21,6 +21,11 @@ if [[ "${1:-}" == "--debug" ]]; then
     CARGO_FLAGS=()
 fi
 
+if [[ -x "target/${PROFILE}/gpclient" && -x "target/${PROFILE}/gpauth" ]]; then
+    echo "==> Using existing target/${PROFILE}/gpclient and gpauth"
+    exit 0
+fi
+
 command -v brew >/dev/null || { echo "error: Homebrew is required (https://brew.sh)" >&2; exit 1; }
 command -v cargo >/dev/null || { echo "error: cargo not found; install Rust via rustup or 'brew install rustup'" >&2; exit 1; }
 
