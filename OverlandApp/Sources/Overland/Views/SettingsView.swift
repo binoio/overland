@@ -278,6 +278,7 @@ struct HelperStatusRow: View {
                 Text("Helper: \(manager.status.title)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Spacer()
                 switch manager.status {
                 case .notRegistered:
@@ -305,12 +306,14 @@ struct HelperStatusRow: View {
                         .controlSize(.small)
                 }
             }
+            .frame(maxWidth: .infinity)
             if let error = manager.lastError {
                 Text(error)
                     .font(.caption2)
                     .foregroundStyle(.red)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { manager.refresh() }
         .confirmationDialog(
             "Uninstall the privileged helper?",

@@ -14,7 +14,7 @@ public struct ContentView: View {
     public var body: some View {
         if viewModel.needsSetup {
             SetupView(viewModel: viewModel)
-                .frame(minWidth: 620, minHeight: 560)
+                .frame(minWidth: 760, minHeight: 560)
         } else {
             mainSplit
         }

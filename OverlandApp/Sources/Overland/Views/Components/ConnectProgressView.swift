@@ -10,9 +10,7 @@ struct ConnectProgressView: View {
     let onReopenSignIn: () -> Void
     let onCancel: () -> Void
     var onDeliverCallback: ((String) -> Void)? = nil
-
-    @State private var showingManualCallbackSheet = false
-    @State private var manualCallbackText = ""
+    @Environment(\.openWindow) private var openWindow
 
     private var steps: [ConnectPhase] {
         // With the helper there is no separate authorization step to show.
@@ -48,8 +46,8 @@ struct ConnectProgressView: View {
                         }
                         if onDeliverCallback != nil {
                             Button("Paste callback URL…") {
-                                manualCallbackText = ""
-                                showingManualCallbackSheet = true
+                                NSApp.activate(ignoringOtherApps: true)
+                                openWindow(id: "manual-callback")
                             }
                             .controlSize(.small)
                             .help("If your browser didn't return to Overland automatically, paste the callback URL or data here")
@@ -60,35 +58,6 @@ struct ConnectProgressView: View {
 
             Button("Cancel", role: .cancel) { onCancel() }
                 .keyboardShortcut(.cancelAction)
-        }
-        .sheet(isPresented: $showingManualCallbackSheet) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Paste Authentication Callback")
-                    .font(.headline)
-                Text("If the browser showed \"Authentication complete\" but did not return to Overland automatically, copy the URL from the browser address bar or redirect page and paste it below:")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                TextField("globalprotectcallback:...", text: $manualCallbackText)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(.body, design: .monospaced))
-                HStack {
-                    Spacer()
-                    Button("Cancel") { showingManualCallbackSheet = false }
-                        .keyboardShortcut(.cancelAction)
-                    Button("Submit") {
-                        let trimmed = manualCallbackText.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            onDeliverCallback?(trimmed)
-                            showingManualCallbackSheet = false
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(manualCallbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .padding(20)
-            .frame(width: 460)
         }
     }
 

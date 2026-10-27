@@ -24,6 +24,7 @@ struct ConnectionEditorView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
+                .frame(maxWidth: .infinity)
                 .onChange(of: viewModel.profile.authMethod) { viewModel.saveProfile() }
             }
 
@@ -88,6 +89,7 @@ struct ConnectionEditorView: View {
                             }
                         }
                         .labelsHidden()
+                        .frame(maxWidth: .infinity)
 
                         Button {
                             viewModel.refreshGateways()
@@ -112,7 +114,9 @@ struct ConnectionEditorView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             content()
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func pathField(title: String, placeholder: String, binding: Binding<String>) -> some View {

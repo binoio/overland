@@ -50,6 +50,12 @@ struct OverlandApp: App {
             }
 
             CommandGroup(before: .windowList) {
+                Button("Edit Connection…") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "edit-connection")
+                }
+                .keyboardShortcut("e", modifiers: [.command])
+
                 Button("Gateways") { openWindow(id: "gateways") }
                     .keyboardShortcut("g", modifiers: [.command, .shift])
                 Button("Activity Logs") { openWindow(id: "logs") }
@@ -87,6 +93,21 @@ struct OverlandApp: App {
                 .frame(minWidth: 640, minHeight: 360)
         }
         .defaultSize(width: 820, height: 480)
+
+        Window("Edit Connection", id: "edit-connection") {
+            ConnectionEditView(viewModel: viewModel)
+        }
+        .windowResizability(.contentSize)
+
+        Window("Add Gateway", id: "add-gateway") {
+            AddGatewayView(viewModel: viewModel)
+        }
+        .windowResizability(.contentSize)
+
+        Window("Paste Authentication Callback", id: "manual-callback") {
+            ManualCallbackView(viewModel: viewModel)
+        }
+        .windowResizability(.contentSize)
 
         MenuBarExtra {
             MenuBarExtraView(

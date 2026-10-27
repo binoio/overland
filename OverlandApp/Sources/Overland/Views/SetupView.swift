@@ -50,16 +50,18 @@ struct SetupView: View {
                         Text(canContinue ? "Save these settings and go to the connection screen." : "Enter a portal address to continue.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         Spacer()
                         Button("Continue") { viewModel.completeSetup() }
                             .buttonStyle(.borderedProminent)
                             .keyboardShortcut(.defaultAction)
                             .disabled(!canContinue)
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
             .padding(32)
-            .frame(maxWidth: 640, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .onAppear { helper.refresh() }
     }
@@ -81,6 +83,7 @@ struct SetupView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                Spacer()
             }
             content()
         }

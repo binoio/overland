@@ -3,7 +3,7 @@ import SwiftUI
 
 public struct ConnectionDetailView: View {
     @ObservedObject var viewModel: VpnViewModel
-    @State private var editing = false
+    @Environment(\.openWindow) private var openWindow
 
     public var body: some View {
         ScrollView {
@@ -34,10 +34,7 @@ public struct ConnectionDetailView: View {
                 }
             }
             .padding(24)
-            .frame(maxWidth: 760)
-        }
-        .sheet(isPresented: $editing) {
-            editorSheet
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
     }
 
@@ -68,22 +65,30 @@ public struct ConnectionDetailView: View {
                 Text(viewModel.profile.portal.isEmpty ? "No portal configured" : viewModel.profile.portal)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Button("Change portal or sign-in…") { editing = true }
-                    .buttonStyle(.link)
-                    .font(.caption)
-                    .padding(.top, 2)
             }
             Spacer()
-            Button {
-                viewModel.connect()
-            } label: {
-                Text("Connect")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(minWidth: 120, minHeight: 32)
+            HStack(spacing: 10) {
+                Button {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "edit-connection")
+                } label: {
+                    Label("Edit Connection…", systemImage: "pencil")
+                        .font(.system(size: 14, weight: .medium))
+                        .frame(minHeight: 32)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    viewModel.connect()
+                } label: {
+                    Text("Connect")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(minWidth: 100, minHeight: 32)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(viewModel.profile.portal.isEmpty)
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
-            .disabled(viewModel.profile.portal.isEmpty)
         }
         .padding(24)
         .background(Color(NSColor.controlBackgroundColor))
@@ -142,25 +147,6 @@ public struct ConnectionDetailView: View {
         .padding(.horizontal, 16)
         .background(Color(NSColor.controlBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private var editorSheet: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Connection")
-                .font(.title2.weight(.bold))
-            ConnectionEditorView(viewModel: viewModel)
-            HStack {
-                Spacer()
-                Button("Done") {
-                    viewModel.saveProfile()
-                    editing = false
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 480)
     }
 
     // MARK: Connecting

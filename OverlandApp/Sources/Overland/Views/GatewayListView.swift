@@ -3,9 +3,7 @@ import SwiftUI
 
 public struct GatewayListView: View {
     @ObservedObject var viewModel: VpnViewModel
-    @State private var showingAddGatewaySheet = false
-    @State private var newGatewayName = ""
-    @State private var newGatewayServer = ""
+    @Environment(\.openWindow) private var openWindow
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -20,7 +18,10 @@ public struct GatewayListView: View {
 
                 Spacer()
 
-                Button(action: { showingAddGatewaySheet = true }) {
+                Button(action: {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "add-gateway")
+                }) {
                     Label("Add Gateway", systemImage: "plus")
                 }
 
@@ -90,36 +91,6 @@ public struct GatewayListView: View {
                 }
                 .listStyle(.inset)
             }
-        }
-        .sheet(isPresented: $showingAddGatewaySheet) {
-            VStack(spacing: 16) {
-                Text("Add Gateway")
-                    .font(.headline)
-
-                TextField("Display name (optional)", text: $newGatewayName)
-                    .textFieldStyle(.roundedBorder)
-
-                TextField("Gateway hostname", text: $newGatewayServer)
-                    .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    Button("Cancel") { showingAddGatewaySheet = false }
-                        .buttonStyle(.bordered)
-                        .keyboardShortcut(.cancelAction)
-
-                    Button("Add") {
-                        viewModel.addManualGateway(name: newGatewayName, server: newGatewayServer)
-                        newGatewayName = ""
-                        newGatewayServer = ""
-                        showingAddGatewaySheet = false
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(newGatewayServer.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-            }
-            .padding(24)
-            .frame(width: 380)
         }
     }
 
