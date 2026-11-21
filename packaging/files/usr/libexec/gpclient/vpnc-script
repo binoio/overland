@@ -477,7 +477,9 @@ else # use route command
 
 	set_ipv4_default_route() {
 		DEFAULTGW="`get_default_gw`"
-		echo "$DEFAULTGW" > "$DEFAULT_ROUTE_FILE"
+		if [ ! -s "$DEFAULT_ROUTE_FILE" ] && [ -n "$DEFAULTGW" ] && [ "$DEFAULTGW" != "$INTERNAL_IP4_ADDRESS" ]; then
+			echo "$DEFAULTGW" > "$DEFAULT_ROUTE_FILE"
+		fi
 		route $route_syntax_del default $route_syntax_gw "$DEFAULTGW"
 		route add default $route_syntax_gw "$INTERNAL_IP4_ADDRESS" $route_syntax_interface
 	}
@@ -520,8 +522,11 @@ else # use route command
 
 	reset_ipv4_default_route() {
 		if [ -s "$DEFAULT_ROUTE_FILE" ]; then
-			route $route_syntax_del default $route_syntax_gw `get_default_gw` $route_syntax_interface
-			route add default $route_syntax_gw `cat "$DEFAULT_ROUTE_FILE"`
+			SAVED_GW=`cat "$DEFAULT_ROUTE_FILE"`
+			route $route_syntax_del default $route_syntax_gw `get_default_gw` $route_syntax_interface 2>/dev/null || route $route_syntax_del default 2>/dev/null || true
+			if [ -n "$SAVED_GW" ] && [ "$SAVED_GW" != "$INTERNAL_IP4_ADDRESS" ]; then
+				route add default $route_syntax_gw "$SAVED_GW"
+			fi
 			rm -f -- "$DEFAULT_ROUTE_FILE"
 		fi
 	}
@@ -748,14 +753,17 @@ search $DOMAINS"
 						ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder 2>/dev/null | grep -B 1 "$ACTIVE_INTERFACE" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
 					fi
 					if [ -n "$ACTIVE_NETWORK_SERVICE" ]; then
-						echo "$ACTIVE_NETWORK_SERVICE" > "$NETWORK_SERVICE_BACKUP"
-						OLD_DNS=`networksetup -getdnsservers "$ACTIVE_NETWORK_SERVICE" 2>/dev/null`
-						if echo "$OLD_DNS" | grep -qi "There aren't any"; then
-							echo "Empty" > "$DNS_BACKUP"
-						elif [ -n "$OLD_DNS" ]; then
-							echo "$OLD_DNS" > "$DNS_BACKUP"
-						else
-							echo "Empty" > "$DNS_BACKUP"
+						if [ ! -s "$NETWORK_SERVICE_BACKUP" ]; then
+							echo "$ACTIVE_NETWORK_SERVICE" > "$NETWORK_SERVICE_BACKUP"
+							OLD_DNS=`networksetup -getdnsservers "$ACTIVE_NETWORK_SERVICE" 2>/dev/null`
+							VPN_DNS_NL=`echo "$INTERNAL_IP4_DNS" | tr ' ' '\n'`
+							if echo "$OLD_DNS" | grep -qi "There aren't any"; then
+								echo "Empty" > "$DNS_BACKUP"
+							elif [ -n "$OLD_DNS" ] && [ "$OLD_DNS" != "$VPN_DNS_NL" ]; then
+								echo "$OLD_DNS" > "$DNS_BACKUP"
+							else
+								echo "Empty" > "$DNS_BACKUP"
+							fi
 						fi
 						networksetup -setdnsservers "$ACTIVE_NETWORK_SERVICE" $INTERNAL_IP4_DNS
 					fi
@@ -766,11 +774,12 @@ search $DOMAINS"
 }
 
 restore_resolvconf_generic() {
-	if [ ! -f "$RESOLV_CONF_BACKUP" ]; then
+	if [ -f "$RESOLV_CONF_BACKUP" ]; then
+		grep '^#@VPNC_GENERATED@' /etc/resolv.conf > /dev/null 2>&1 && cat "$RESOLV_CONF_BACKUP" > /etc/resolv.conf
+		rm -f -- "$RESOLV_CONF_BACKUP"
+	elif [ "$OS" != "Darwin" ]; then
 		return
 	fi
-	grep '^#@VPNC_GENERATED@' /etc/resolv.conf > /dev/null 2>&1 && cat "$RESOLV_CONF_BACKUP" > /etc/resolv.conf
-	rm -f -- "$RESOLV_CONF_BACKUP"
 
 	if [ "$OS" = "Darwin" ]; then
 		case "`uname -r`" in
@@ -802,14 +811,19 @@ restore_resolvconf_generic() {
 					fi
 				fi
 				# For newer MacOS versions it is needed to unset DNS
+				RESTORED_SERVICE=""
 				if [ -s "$NETWORK_SERVICE_BACKUP" ]; then
-					RESTORE_SERVICE=`cat "$NETWORK_SERVICE_BACKUP"`
+					RESTORED_SERVICE=`cat "$NETWORK_SERVICE_BACKUP"`
 					if [ -s "$DNS_BACKUP" ]; then
 						RESTORE_DNS=`cat "$DNS_BACKUP"`
 					else
 						RESTORE_DNS="Empty"
 					fi
-					networksetup -setdnsservers "$RESTORE_SERVICE" $RESTORE_DNS 2>/dev/null || true
+					VPN_DNS_NL=`echo "$INTERNAL_IP4_DNS" | tr ' ' '\n'`
+					if [ "$RESTORE_DNS" = "$VPN_DNS_NL" ]; then
+						RESTORE_DNS="Empty"
+					fi
+					networksetup -setdnsservers "$RESTORED_SERVICE" $RESTORE_DNS 2>/dev/null || true
 					rm -f -- "$NETWORK_SERVICE_BACKUP" "$DNS_BACKUP"
 				else
 					ACTIVE_INTERFACE=""
@@ -828,7 +842,20 @@ restore_resolvconf_generic() {
 							ACTIVE_NETWORK_SERVICE=`networksetup -listnetworkserviceorder 2>/dev/null | grep -B 1 "$ACTIVE_INTERFACE" | head -n 1 | awk '/\([0-9]+\)/{ print }'|cut -d " " -f2-`
 						fi
 						if [ -n "$ACTIVE_NETWORK_SERVICE" ]; then
+							RESTORED_SERVICE="$ACTIVE_NETWORK_SERVICE"
 							networksetup -setdnsservers "$ACTIVE_NETWORK_SERVICE" Empty 2>/dev/null || true
+						fi
+					fi
+				fi
+				# If macOS lost its default route after removing utun/DNS overrides,
+				# trigger a DHCP renewal on the physical interface so configd restores it.
+				DEF_IF=`route -n get default 2>/dev/null | awk '/interface:/{print $2}'`
+				if [ -z "$DEF_IF" ] || [ "$DEF_IF" = "$TUNDEV" ]; then
+					[ "$DEF_IF" = "$TUNDEV" ] && route -n delete default >/dev/null 2>&1 || true
+					if [ -n "$RESTORED_SERVICE" ]; then
+						PHYS_DEV=`networksetup -listnetworkserviceorder 2>/dev/null | grep -A 1 ")${RESTORED_SERVICE}$\|) ${RESTORED_SERVICE}$" | sed -n 's/.*Device: \([^)]*\)).*/\1/p' | head -n 1`
+						if [ -n "$PHYS_DEV" ] && networksetup -getinfo "$RESTORED_SERVICE" 2>/dev/null | grep -q "^DHCP Configuration"; then
+							ipconfig set "$PHYS_DEV" DHCP 2>/dev/null || true
 						fi
 					fi
 				fi

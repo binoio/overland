@@ -28,6 +28,17 @@ public struct ContentView: View {
         }
         .frame(minWidth: 760, minHeight: 520)
         .toolbar {
+            if viewModel.selectedTab != .connection {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        viewModel.selectedTab = .connection
+                    } label: {
+                        Label("Connection", systemImage: "chevron.backward")
+                    }
+                    .help("Return to the Connection view")
+                }
+            }
+
             if viewModel.useMockBridge {
                 ToolbarItem(placement: .status) {
                     Text("MOCK")
@@ -60,34 +71,42 @@ public struct ContentView: View {
 
     private var sidebarContent: some View {
         VStack(spacing: 0) {
-            List(NavigationTab.allCases, selection: $viewModel.selectedTab) { tab in
-                NavigationLink(value: tab) {
-                    Label(tab.rawValue, systemImage: tab.iconName)
-                }
+            List(NavigationTab.allCases, selection: Binding<NavigationTab?>(
+                get: { viewModel.selectedTab },
+                set: { if let tab = $0 { viewModel.selectedTab = tab } }
+            )) { tab in
+                Label(tab.rawValue, systemImage: tab.iconName)
+                    .tag(tab)
             }
             .listStyle(.sidebar)
 
             Divider()
 
-            HStack(spacing: 8) {
-                Image(systemName: "shield.fill")
-                    .foregroundStyle(statusColor)
-                    .font(.system(size: 16))
+            Button {
+                viewModel.selectedTab = .connection
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "shield.fill")
+                        .foregroundStyle(statusColor)
+                        .font(.system(size: 16))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(viewModel.profile.portal.isEmpty ? "No Portal" : viewModel.profile.portal)
-                        .font(.caption.weight(.medium))
-                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.profile.portal.isEmpty ? "No Portal" : viewModel.profile.portal)
+                            .font(.caption.weight(.medium))
+                            .lineLimit(1)
 
-                    Text(viewModel.state.title)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        Text(viewModel.state.title)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
                 }
-
-                Spacer()
+                .padding(12)
+                .contentShape(Rectangle())
             }
-            .padding(12)
+            .buttonStyle(.plain)
             .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)

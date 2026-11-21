@@ -22,7 +22,10 @@ public struct ConnectionDetailView: View {
                         FailureCard(
                             failure: failure,
                             onRetry: { viewModel.connect() },
-                            onShowLogs: { viewModel.selectedTab = .logs },
+                            onShowLogs: {
+                                NSApp.activate(ignoringOtherApps: true)
+                                openWindow(id: "logs")
+                            },
                             onDismiss: { viewModel.dismissFailure() }
                         )
                     }

@@ -1,0 +1,10 @@
+<h2>Overland 1.0.7</h2>
+<p>Automatic privileged helper updates after Sparkle installs, reconnect/disconnect route &amp; DNS preservation fixes, and main window navigation improvements.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Automatic Privileged Helper Updates:</strong> Overland now detects stale privileged helper versions or XPC protocol mismatches on launch and during connect (such as after an in-place Sparkle update) and automatically re-registers the updated helper daemon without requiring manual uninstall/reinstall.</li>
+  <li><strong>Reconnect / Disconnect Network Fix:</strong> Fixed <code>vpnc-script</code> bugs where reconnecting overwrote the original default route and DNS backups with VPN addresses, and where missing <code>resolv.conf</code> backups skipped macOS <code>scutil</code>/<code>networksetup</code> teardown. Disconnect now preserves original backups, always cleans up macOS DNS/resolver state, and automatically triggers DHCP recovery if the default route is missing.</li>
+  <li><strong>Main Window Navigation Fix:</strong> Fixed <code>NavigationSplitView</code> sidebar selection so switching to Activity Logs (or Gateways) reliably switches back to the current Connection view, added a <strong>Connection</strong> back button in the toolbar when away from the Connection tab, and opened Activity Logs from failure cards in the dedicated Logs window.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>

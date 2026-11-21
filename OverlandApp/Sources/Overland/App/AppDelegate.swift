@@ -33,6 +33,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
                 window.orderOut(nil)
             }
         }
+
+        if !VpnViewModel.shared.needsSetup {
+            VpnViewModel.shared.handleLaunch()
+        }
     }
 
     @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
