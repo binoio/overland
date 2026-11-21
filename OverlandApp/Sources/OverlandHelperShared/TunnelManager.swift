@@ -34,6 +34,7 @@ public final class TunnelManager: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.bino.overland.helper.tunnel")
     private let validator: HelperRequestValidator
     private let makeRunner: @Sendable () -> any ProcessRunning
+    private let makeResetRunner: @Sendable () -> any ProcessRunning
     private let historyLimit: Int
 
     private var runner: (any ProcessRunning)?
@@ -49,11 +50,13 @@ public final class TunnelManager: @unchecked Sendable {
     public init(
         validator: HelperRequestValidator,
         historyLimit: Int = 1000,
-        runnerFactory: @escaping @Sendable () -> any ProcessRunning = { ProcessRunner() }
+        runnerFactory: @escaping @Sendable () -> any ProcessRunning = { ProcessRunner() },
+        resetRunnerFactory: @escaping @Sendable () -> any ProcessRunning = { ProcessRunner() }
     ) {
         self.validator = validator
         self.historyLimit = historyLimit
         self.makeRunner = runnerFactory
+        self.makeResetRunner = resetRunnerFactory
     }
 
     // MARK: Observers
@@ -124,6 +127,20 @@ public final class TunnelManager: @unchecked Sendable {
     public func kill() {
         let runner = queue.sync { self.runner }
         Task { await runner?.terminate() }
+    }
+
+    public func resetNetwork() async -> String? {
+        if let runner = queue.sync(execute: { self.runner }) {
+            await runner.terminate()
+        }
+        do {
+            try await NetworkResetter.runAsRoot(using: makeResetRunner()) { [weak self] line in
+                self?.record(line)
+            }
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     public var isRunning: Bool {

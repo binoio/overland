@@ -214,4 +214,30 @@ final class HelperServiceTests: XCTestCase {
         let v: Int = await withCheckedContinuation { c in service.protocolVersion { c.resume(returning: $0) } }
         XCTAssertEqual(v, overlandHelperProtocolVersion)
     }
+
+    func testResetNetworkTerminatesTunnelAndRunsResetScript() async {
+        let tunnelJournal = ScriptedRunner.Journal()
+        let resetJournal = ScriptedRunner.Journal()
+        let m = TunnelManager(
+            validator: HelperRequestValidator(gpclientPath: gp, vpncScriptPath: script, fileInfo: { _ in nil }),
+            runnerFactory: { ScriptedRunner(lines: ["connected"], waitForSignal: true, journal: tunnelJournal) },
+            resetRunnerFactory: { ScriptedRunner(lines: ["Network reset complete."], exitCode: 0, journal: resetJournal) }
+        )
+        let client = RecordingClient()
+        let service = HelperService(manager: m, callerUID: 501, client: client)
+
+        let startError = await start(service, ["connect", "vpn.example.com", "--auto-gateway"])
+        XCTAssertNil(startError)
+        let started = await eventually { client.lines.contains("connected") }
+        XCTAssertTrue(started)
+
+        let resetError: String? = await withCheckedContinuation { c in
+            service.resetNetwork { c.resume(returning: $0) }
+        }
+        XCTAssertNil(resetError)
+        XCTAssertEqual(tunnelJournal.terminates, 1)
+        XCTAssertEqual(resetJournal.commands.count, 1)
+        XCTAssertEqual(resetJournal.commands.first?.executable, "/bin/bash")
+        XCTAssertTrue(client.lines.contains("Network reset complete."))
+    }
 }

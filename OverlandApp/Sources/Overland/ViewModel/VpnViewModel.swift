@@ -1,4 +1,5 @@
 import OverlandCore
+import AppKit
 import Foundation
 import SwiftUI
 import ServiceManagement
@@ -96,6 +97,8 @@ public final class VpnViewModel: ObservableObject {
     /// First run: no portal has been saved yet.
     @Published public var needsSetup: Bool
     @Published public var resolvedVpncScriptPath: String?
+    /// True while a full macOS network reset is running.
+    @Published public var isResettingNetwork: Bool = false
 
     public var gateways: [Gateway] {
         get { profile.knownGateways }
@@ -112,6 +115,7 @@ public final class VpnViewModel: ObservableObject {
     private var metricsTimer: Timer?
     private var eventTask: Task<Void, Never>?
     private var callbackObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
     private var baselineCounters: InterfaceStatsReader.Counters?
 
     private let profileDefaultsKey = "Overland.ConnectionProfile"
@@ -173,6 +177,7 @@ public final class VpnViewModel: ObservableObject {
 
         subscribeToBridge()
         observeAuthCallbacks()
+        observeSystemWake()
         refreshResolvedPaths()
         fetchBackendVersion()
     }
@@ -525,6 +530,101 @@ public final class VpnViewModel: ObservableObject {
             appendLog(LogEntry(level: .info, message: "Privileged helper uninstalled; the administrator dialog will be used until it is enabled again"))
         } else if let error = helperManager.lastError {
             appendLog(LogEntry(level: .error, message: "Could not uninstall the helper: \(error)"))
+        }
+    }
+
+    // MARK: - Network Reset & Sleep/Wake
+
+    /// Presents a confirmation dialog and runs a complete macOS network reset.
+    public func confirmAndResetNetworkSettings() {
+        guard !isResettingNetwork else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Reset Network Settings?"
+        alert.informativeText = "This stops any lingering VPN processes, removes Overland DNS and route overrides, resets network service DNS to automatic (DHCP), flushes the DNS cache, and refreshes active network interfaces."
+        alert.addButton(withTitle: "Reset Network")
+        alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn {
+            Task {
+                await self.resetNetworkSettings()
+            }
+        }
+    }
+
+    /// Completely clears any VPN processes, routes, DNS overrides, and Dynamic
+    /// Store state left behind by Overland, then refreshes active macOS network
+    /// interfaces so the system reasserts its default routes and DNS.
+    public func resetNetworkSettings() async {
+        guard !isResettingNetwork else { return }
+        isResettingNetwork = true
+        defer { isResettingNetwork = false }
+
+        appendLog(LogEntry(level: .info, message: "Resetting macOS network settings…"))
+        statusMessage = "Resetting network settings…"
+
+        if hasActiveSession || state == .disconnecting {
+            await disconnectAndWait(timeout: 3)
+        }
+
+        let logLine: @Sendable (String) -> Void = { [weak self] line in
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+            Task { @MainActor in
+                self?.appendLog(LogEntry(level: .info, message: "[network-reset] \(trimmed)"))
+            }
+        }
+
+        do {
+            var ranViaHelper = false
+            if helperManager.isUsable {
+                let helper = HelperProcessRunner()
+                do {
+                    try await helper.resetNetwork(onLine: logLine)
+                    await helper.close()
+                    ranViaHelper = true
+                } catch {
+                    await helper.close()
+                    appendLog(LogEntry(level: .warn, message: "Privileged helper reset unavailable (\(error.localizedDescription)); falling back to administrator prompt"))
+                }
+            }
+
+            if !ranViaHelper {
+                try await NetworkResetter.runWithAdminPrompt(onLine: logLine)
+            }
+
+            failure = nil
+            updateState(.disconnected)
+            statusMessage = "Network settings reset to system defaults."
+            appendLog(LogEntry(level: .info, message: "Network settings reset completed successfully."))
+        } catch NetworkResetError.cancelled {
+            statusMessage = nil
+            appendLog(LogEntry(level: .info, message: "Network reset cancelled by user."))
+        } catch {
+            statusMessage = error.localizedDescription
+            appendLog(LogEntry(level: .error, message: "Network reset failed: \(error.localizedDescription)"))
+        }
+    }
+
+    private func observeSystemWake() {
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.hasActiveSession else { return }
+                self.appendLog(LogEntry(level: .info, message: "System woke from sleep while VPN session was active; checking tunnel status"))
+                if self.helperManager.isUsable {
+                    let probe = HelperProcessRunner()
+                    let st = try? await probe.status()
+                    await probe.close()
+                    if let st, !st.running, self.hasActiveSession {
+                        self.appendLog(LogEntry(level: .warn, message: "VPN tunnel exited during sleep; updating state to disconnected"))
+                        self.updateState(.disconnected)
+                    }
+                }
+            }
         }
     }
 

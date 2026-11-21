@@ -7,6 +7,7 @@ public struct SettingsView: View {
     /// Sparkle's controls, injected by the app so previews/tests need no updater.
     var updatesSection: AnyView? = nil
     @State private var confirmingReset = false
+    @State private var confirmingNetworkReset = false
 
     public var body: some View {
         TabView {
@@ -143,6 +144,30 @@ public struct SettingsView: View {
                         .frame(width: 80)
                         .multilineTextAlignment(.trailing)
                 }
+            }
+
+            Section("Troubleshooting") {
+                HStack {
+                    Button("Reset Network Settings…", role: .destructive) {
+                        confirmingNetworkReset = true
+                    }
+                    .disabled(viewModel.isResettingNetwork)
+                    if viewModel.isResettingNetwork {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+                .confirmationDialog("Reset macOS network settings?", isPresented: $confirmingNetworkReset, titleVisibility: .visible) {
+                    Button("Reset Network", role: .destructive) {
+                        Task { await viewModel.resetNetworkSettings() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Stops any lingering VPN processes, removes Overland DNS and route overrides, resets network service DNS to automatic (DHCP), flushes the DNS cache, and refreshes active interfaces.")
+                }
+
+                Text("Use this if your Mac woke from sleep or disconnected abnormally and DNS, routes, or Wi-Fi connectivity remain stuck.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

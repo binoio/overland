@@ -110,7 +110,10 @@ public actor PrivilegedProcessRunner: ProcessRunning {
           [ -n "$PID" ] || continue
           case "$cmd" in
             stop) kill -INT "$PID" 2>/dev/null ;;
-            kill) kill -TERM "$PID" 2>/dev/null ;;
+            kill)
+              kill -TERM "$PID" 2>/dev/null
+              ( sleep 2; kill -KILL "$PID" 2>/dev/null ) &
+              ;;
           esac
         fi
       done

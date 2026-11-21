@@ -2,7 +2,7 @@ import Foundation
 
 /// Bumped whenever the XPC contract changes; the app refuses to talk to a
 /// helper with a different version (a stale daemon after an app update).
-public let overlandHelperProtocolVersion = 1
+public let overlandHelperProtocolVersion = 2
 
 public let overlandHelperMachServiceName = "io.bino.overland.helper"
 public let overlandHelperPlistName = "io.bino.overland.helper.plist"
@@ -58,6 +58,9 @@ public struct HelperStatus: Codable, Equatable, Sendable {
     func kill()
     /// JSON `HelperStatus`.
     func status(reply: @escaping (Data) -> Void)
+    /// Tears down any running tunnel and resets macOS DNS, routes, and
+    /// `scutil` Dynamic Store entries. `reply` carries an error message or nil.
+    func resetNetwork(reply: @escaping (String?) -> Void)
 }
 
 /// Exported by the app on its side of the connection; the helper streams

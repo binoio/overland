@@ -171,6 +171,16 @@ public actor HelperProcessRunner: ProcessRunning {
         }
     }
 
+    public func resetNetwork(onLine: (@Sendable (String) -> Void)? = nil) async throws {
+        try await checkVersion()
+        client.set(onLine: onLine, onExit: nil)
+        defer { client.set(onLine: nil, onExit: nil) }
+        let error: String? = try await call { helper, reply in helper.resetNetwork(reply: reply) }
+        if let error {
+            throw NetworkResetError.failed(error)
+        }
+    }
+
     private func checkVersion() async throws {
         let v = try await helperProtocolVersion()
         guard v == overlandHelperProtocolVersion else {

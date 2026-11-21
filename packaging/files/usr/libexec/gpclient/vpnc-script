@@ -832,6 +832,8 @@ restore_resolvconf_generic() {
 						fi
 					fi
 				fi
+				dscacheutil -flushcache 2>/dev/null || true
+				killall -HUP mDNSResponder 2>/dev/null || true
 				;;
 		esac
 	fi

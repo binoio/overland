@@ -47,6 +47,13 @@ struct OverlandApp: App {
                 }
                 .keyboardShortcut("r", modifiers: [.command])
                 .disabled(viewModel.isDiscoveringGateways || viewModel.state.isBusy)
+
+                Divider()
+
+                Button("Reset Network Settings…") {
+                    viewModel.confirmAndResetNetworkSettings()
+                }
+                .disabled(viewModel.isResettingNetwork)
             }
 
             CommandGroup(before: .windowList) {

@@ -50,6 +50,11 @@ public struct MenuBarExtraView: View {
         }
         .keyboardShortcut(",", modifiers: [.command])
 
+        Button("Reset Network Settings…") {
+            viewModel.confirmAndResetNetworkSettings()
+        }
+        .disabled(viewModel.isResettingNetwork)
+
         Divider()
 
         Button("Quit Overland") { NSApplication.shared.terminate(nil) }

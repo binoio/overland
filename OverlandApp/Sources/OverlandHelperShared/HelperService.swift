@@ -64,6 +64,21 @@ public final class HelperService: NSObject, OverlandHelperProtocol, @unchecked S
         let data = (try? JSONEncoder().encode(manager.status())) ?? Data()
         reply(data)
     }
+
+    public func resetNetwork(reply: @escaping (String?) -> Void) {
+        let box = ReplyBox(reply)
+        let manager = self.manager
+        Task {
+            let error = await manager.resetNetwork()
+            box.call(error)
+        }
+    }
+}
+
+private final class ReplyBox: @unchecked Sendable {
+    private let reply: (String?) -> Void
+    init(_ reply: @escaping (String?) -> Void) { self.reply = reply }
+    func call(_ value: String?) { reply(value) }
 }
 
 private final class ClientBox: @unchecked Sendable {

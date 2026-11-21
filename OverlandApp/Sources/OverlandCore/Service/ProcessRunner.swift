@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 public struct ProcessResult: Sendable, Equatable {
     public let exitCode: Int32
@@ -165,7 +170,17 @@ public actor ProcessRunner: ProcessRunning {
 
     public func terminate() {
         if let process = currentProcess, process.isRunning {
+            let pid = process.processIdentifier
             process.terminate()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2.0) {
+                if process.isRunning {
+                    #if canImport(Darwin)
+                    Darwin.kill(pid, SIGKILL)
+                    #elseif canImport(Glibc)
+                    Glibc.kill(pid, SIGKILL)
+                    #endif
+                }
+            }
         }
         currentProcess = nil
     }

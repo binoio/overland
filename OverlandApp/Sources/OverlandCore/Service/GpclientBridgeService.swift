@@ -598,6 +598,15 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         if await runner.isRunning {
             log(.warn, "gpclient did not exit after \(Int(disconnectGracePeriod))s; terminating")
             await runner.terminate()
+            let killDeadline = Date().addingTimeInterval(3)
+            while await runner.isRunning, Date() < killDeadline {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            if !currentState.isDisconnected {
+                tunnelRunner = nil
+                setState(.disconnected)
+                log(.warn, "Forced disconnect completed. If network or DNS remains unreachable, use Reset Network Settings.")
+            }
         }
     }
 

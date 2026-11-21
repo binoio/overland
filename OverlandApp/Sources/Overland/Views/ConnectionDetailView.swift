@@ -173,9 +173,17 @@ public struct ConnectionDetailView: View {
     }
 
     private func busyCard(title: String) -> some View {
-        HStack(spacing: 10) {
-            ProgressView().controlSize(.small)
-            Text(title).font(.title3.weight(.semibold))
+        VStack(spacing: 14) {
+            HStack(spacing: 10) {
+                ProgressView().controlSize(.small)
+                Text(title).font(.title3.weight(.semibold))
+            }
+            Button("Force Reset Network…", role: .destructive) {
+                viewModel.confirmAndResetNetworkSettings()
+            }
+            .controlSize(.small)
+            .disabled(viewModel.isResettingNetwork)
+            .help("Force-stop the VPN and restore macOS DNS, routes, and network interfaces")
         }
         .frame(maxWidth: .infinity)
         .padding(28)

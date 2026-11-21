@@ -1,0 +1,10 @@
+<h2>Overland 1.0.6</h2>
+<p>Complete macOS network settings reset, sleep/wake tunnel resilience, and disconnect reliability improvements.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Reset Network Settings:</strong> Added a one-click <strong>Reset Network Settings…</strong> action (available in <strong>Settings ▸ Network ▸ Troubleshooting</strong>, the menu bar, the app menu, and as <strong>Force Reset Network…</strong> while disconnecting). It stops any lingering VPN processes, removes stale <code>scutil</code> Dynamic Store entries and <code>utun</code> default routes, resets persistent DNS and search-domain overrides to automatic (DHCP), flushes macOS DNS caches, and refreshes active interfaces so macOS restores default routing, DNS, and Wi-Fi reachability.</li>
+  <li><strong>Disconnect &amp; Sleep/Wake Resilience:</strong> Escalated forced tunnel termination to <code>SIGKILL</code> when <code>gpclient</code> becomes unresponsive after waking from sleep, guaranteed UI state recovery out of disconnecting, and added wake-from-sleep tunnel health checks.</li>
+  <li><strong>Cleaner Disconnect DNS Flush:</strong> Flushed macOS DNS caches (<code>dscacheutil</code> / <code>mDNSResponder</code>) during standard <code>vpnc-script</code> teardown so local DNS resumes immediately.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>
