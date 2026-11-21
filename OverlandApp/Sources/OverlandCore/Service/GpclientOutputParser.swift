@@ -57,6 +57,48 @@ public struct GpclientOutputParser: Sendable {
     private static let allowExtendRegex = try! NSRegularExpression(pattern: #"allow_extend_session=(true|false)"#)
     private static let manualURLRegex = try! NSRegularExpression(pattern: #"(https?://\S+)"#)
 
+    /// Patterns for sensitive authentication and tunnel values that must never
+    /// appear in Activity Logs or debug output.
+    private static let sensitiveXMLTags = [
+        "prelogin-cookie",
+        "portal-userauthcookie",
+        "authcookie",
+        "saml-request",
+        "saml-response",
+        "password",
+        "passwd",
+        "session-token"
+    ]
+
+    private static let sensitiveXMLRegex: NSRegularExpression = {
+        let joined = sensitiveXMLTags.joined(separator: "|")
+        return try! NSRegularExpression(
+            pattern: #"<(\#(joined))>[^<]*</\1>"#,
+            options: [.caseInsensitive]
+        )
+    }()
+
+    private static let sensitiveKeyValueRegex = try! NSRegularExpression(
+        pattern: #"(?i)\b(authcookie|prelogin-cookie|portal-userauthcookie|userauthcookie|passwd|password|cookie)=([^\s&'"\]]+)"#
+    )
+
+    private static let callbackPayloadRegex = try! NSRegularExpression(
+        pattern: #"globalprotectcallback:[^\s'"\]]+"#,
+        options: [.caseInsensitive]
+    )
+
+    /// Redacts cookies, passwords, SAML payloads, and callback tokens from a log line.
+    public static func redactSensitive(_ message: String) -> String {
+        var out = message
+        let xmlRange = NSRange(out.startIndex..<out.endIndex, in: out)
+        out = sensitiveXMLRegex.stringByReplacingMatches(in: out, range: xmlRange, withTemplate: "<$1>[REDACTED]</$1>")
+        let kvRange = NSRange(out.startIndex..<out.endIndex, in: out)
+        out = sensitiveKeyValueRegex.stringByReplacingMatches(in: out, range: kvRange, withTemplate: "$1=[REDACTED]")
+        let cbRange = NSRange(out.startIndex..<out.endIndex, in: out)
+        out = callbackPayloadRegex.stringByReplacingMatches(in: out, range: cbRange, withTemplate: "globalprotectcallback:[REDACTED]")
+        return out
+    }
+
     /// Parse one line of output into zero or more events.
     public func parse(line rawLine: String) -> [GpclientEvent] {
         let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,7 +122,13 @@ public struct GpclientOutputParser: Sendable {
             entry = LogEntry(level: Self.heuristicLevel(for: line), message: line)
         }
 
-        var events: [GpclientEvent] = [.log(entry)]
+        let sanitized = LogEntry(
+            id: entry.id,
+            timestamp: entry.timestamp,
+            level: entry.level,
+            message: Self.redactSensitive(entry.message)
+        )
+        var events: [GpclientEvent] = [.log(sanitized)]
         events.append(contentsOf: derivedEvents(from: entry))
         return events
     }

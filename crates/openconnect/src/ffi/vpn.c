@@ -12,13 +12,17 @@ void *g_user_data;
 static int g_cmd_pipe_fd;
 static const char *g_vpnc_script;
 static const char *g_vpnc_interface;
+static const char *g_servercert;
 static int g_script_tun;
 static vpn_connected_callback on_vpn_connected;
 
 /* Validate the peer certificate */
-static int validate_peer_cert(__attribute__((unused)) void *_vpninfo,
-			      const char *reason)
+static int validate_peer_cert(void *_vpninfo, const char *reason)
 {
+	if (g_servercert) {
+		return openconnect_check_peer_cert_hash(
+		    (struct openconnect_info *)_vpninfo, g_servercert);
+	}
 	INFO("Accepting the server certificate though %s", reason);
 	return 0;
 }
@@ -74,6 +78,7 @@ int vpn_connect(const vpn_options *options, vpn_connected_callback callback)
 	g_user_data = options->user_data;
 	g_vpnc_script = options->script;
 	g_vpnc_interface = options->interface;
+	g_servercert = options->servercert;
 	g_script_tun = options->script_tun;
 	on_vpn_connected = callback;
 

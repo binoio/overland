@@ -91,10 +91,12 @@ public enum HIPSimulator {
             fi
 
             if [ -n "$GPCLIENT_EXEC" ] && [ -x "$GPCLIENT_EXEC" ]; then
-              EXTRA_ARGS=""
-              [ -n "$CLIENT_IP" ] && EXTRA_ARGS="$EXTRA_ARGS --client-ip $CLIENT_IP"
-              [ -n "$CLIENT_IPV6" ] && EXTRA_ARGS="$EXTRA_ARGS --client-ipv6 $CLIENT_IPV6"
-              REAL_REPORT=$("$GPCLIENT_EXEC" hip --client-version "$CLIENT_VERSION" --client-os "$CLIENT_OS" --cookie "$COOKIE" --md5 "$MD5" $EXTRA_ARGS 2>/dev/null || true)
+              set -- hip --client-version "$CLIENT_VERSION" --client-os "$CLIENT_OS" --cookie "$COOKIE" --md5 "$MD5"
+              [ -n "$CLIENT_IP" ] && set -- "$@" --client-ip "$CLIENT_IP"
+              [ -n "$CLIENT_IPV6" ] && set -- "$@" --client-ipv6 "$CLIENT_IPV6"
+              [ -n "$HOST_ID" ] && set -- "$@" --host-id "$HOST_ID"
+              [ -n "$OS_VERSION" ] && set -- "$@" --os-version "$OS_VERSION"
+              REAL_REPORT=$("$GPCLIENT_EXEC" "$@" 2>/dev/null || true)
               if printf '%s\\n' "$REAL_REPORT" | grep -q '<hip-report'; then
                 printf '%s\\n' "$REAL_REPORT"
                 exit 0
@@ -112,9 +114,10 @@ public enum HIPSimulator {
         MD5=""
         CLIENT_VERSION="6.2.4-49"
         CLIENT_OS="Mac"
-        OS_VERSION="Apple Mac OS X 14.5.0"
+        OS_VERSION=""
         CLIENT_IP=""
         CLIENT_IPV6=""
+        HOST_ID=""
 
         while [ $# -gt 0 ]; do
           case "$1" in
@@ -125,9 +128,27 @@ public enum HIPSimulator {
             --os-version) OS_VERSION="$2"; shift 2 ;;
             --client-ip) CLIENT_IP="$2"; shift 2 ;;
             --client-ipv6) CLIENT_IPV6="$2"; shift 2 ;;
+            --host-id) HOST_ID="$2"; shift 2 ;;
             *) shift ;;
           esac
         done
+
+        if [ -z "$OS_VERSION" ]; then
+          MAC_VER=$(sw_vers -productVersion 2>/dev/null || true)
+          if [ -n "$MAC_VER" ]; then
+            OS_VERSION="Apple Mac OS X ${MAC_VER}"
+          else
+            OS_VERSION="Apple Mac OS X 14.5.0"
+          fi
+        fi
+
+        if [ -z "$HOST_ID" ] && command -v networksetup >/dev/null 2>&1; then
+          HOST_ID=$(networksetup -listallhardwareports 2>/dev/null | awk '
+            /^Hardware Port: (Wi-Fi|AirPort)$/ { found=1; next }
+            /^Hardware Port:/ { found=0 }
+            found && /^Ethernet Address: / { print $3; exit }
+          ' || true)
+        fi
 
         \(probeBlock)
 

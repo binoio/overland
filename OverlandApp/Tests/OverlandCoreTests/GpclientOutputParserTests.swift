@@ -120,4 +120,27 @@ final class GpclientOutputParserTests: XCTestCase {
     func testBlankLinesAreIgnored() {
         XCTAssertTrue(parser.parse(line: "   \n").isEmpty)
     }
+
+    func testRedactsSensitiveAuthAndTunnelDataFromLogs() {
+        let xml = "Response: <prelogin-cookie>secret123</prelogin-cookie> <portal-userauthcookie>tok456</portal-userauthcookie>"
+        let redactedXML = GpclientOutputParser.redactSensitive(xml)
+        XCTAssertFalse(redactedXML.contains("secret123"))
+        XCTAssertFalse(redactedXML.contains("tok456"))
+        XCTAssertTrue(redactedXML.contains("<prelogin-cookie>[REDACTED]</prelogin-cookie>"))
+
+        let kv = "POST body: user=alice&authcookie=deadbeef&passwd=hunter2"
+        let redactedKV = GpclientOutputParser.redactSensitive(kv)
+        XCTAssertFalse(redactedKV.contains("deadbeef"))
+        XCTAssertFalse(redactedKV.contains("hunter2"))
+        XCTAssertTrue(redactedKV.contains("user=alice"))
+
+        let cb = "Received globalprotectcallback:cas-as=1&prelogin-cookie=xyz999"
+        let redactedCB = GpclientOutputParser.redactSensitive(cb)
+        XCTAssertFalse(redactedCB.contains("xyz999"))
+        XCTAssertTrue(redactedCB.contains("globalprotectcallback:[REDACTED]"))
+
+        let events = parser.parse(line: #"{"level":"DEBUG","message":"<authcookie>topsecret</authcookie>"}"#)
+        guard case .log(let entry)? = events.first else { return XCTFail() }
+        XCTAssertEqual(entry.message, "<authcookie>[REDACTED]</authcookie>")
+    }
 }

@@ -1,0 +1,12 @@
+<h2>Overland 1.0.9</h2>
+<p>Incorporates key upstream GlobalProtect-openconnect fixes for macOS DNS &amp; split-tunnel handling, log redaction, URL/port parsing, client certificate validation, and native macOS HIP host info.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Ephemeral macOS DNS &amp; Split-Tunnel Support:</strong> Adopted upstream's <code>scutil</code>-only macOS DNS resolver configuration (<code>OverridePrimary</code> + <code>SearchOrder</code> + split-tunnel source tracking) and removed persistent <code>networksetup -setdnsservers</code> writes so physical Wi-Fi/Ethernet DNS settings are never left modified across crashes or reboots.</li>
+  <li><strong>Faster Disconnect on Unresponsive Gateways:</strong> Reduced the disconnect grace timeout before escalating to forced teardown when a gateway stops responding to logout.</li>
+  <li><strong>Security &amp; Log Hygiene:</strong> Redacted sensitive cookies, passwords, SAML payloads, and <code>globalprotectcallback:</code> tokens from Activity Logs, and enforced server certificate pins in OpenConnect's peer validation callback.</li>
+  <li><strong>Custom Port &amp; URL Normalization:</strong> Pasting full portal or gateway URLs (including explicit <code>:port</code> and IPv6 <code>[host]:port</code>) now strips schemes/paths while preserving custom ports.</li>
+  <li><strong>Client Certificate Validation &amp; macOS HIP Info:</strong> Added pre-connect checks for missing or unreadable client certificate/key files, and updated HIP posture reporting to detect real macOS version (<code>sw_vers</code>) and built-in Wi-Fi MAC (<code>networksetup</code>) as the host ID.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>

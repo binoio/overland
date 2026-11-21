@@ -6,6 +6,7 @@ public enum BridgeError: Error, LocalizedError, Equatable {
     case vpncScriptNotFound
     case portalMissing
     case alreadyBusy
+    case invalidCertificate(String)
     case authFailed(String)
     case privilegeDenied
     case tunnelFailed(String)
@@ -22,6 +23,8 @@ public enum BridgeError: Error, LocalizedError, Equatable {
             return "Enter a portal address before connecting."
         case .alreadyBusy:
             return "A connection attempt is already in progress."
+        case .invalidCertificate(let reason):
+            return reason
         case .authFailed(let reason):
             return reason
         case .privilegeDenied:
@@ -92,7 +95,7 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         locator: BinaryLocator = BinaryLocator(),
         tunInspector: TunInterfaceInspector = TunInterfaceInspector(),
         temporaryDirectory: URL = URL(fileURLWithPath: NSTemporaryDirectory()),
-        disconnectGracePeriod: TimeInterval = 8,
+        disconnectGracePeriod: TimeInterval = 4,
         runnerFactory: @escaping RunnerFactory = { ProcessRunner() },
         privilegedRunnerFactory: PrivilegedRunnerFactory? = nil,
         orphanScanner: @escaping OrphanScanner = { PrivilegedProcessRunner.findOrphans() },
@@ -282,11 +285,31 @@ public actor GpclientBridgeService: BridgeServiceProtocol {
         }
     }
 
+    /// Validates client certificate and optional private key paths before
+    /// launching `gpclient` so missing or unreadable files produce a clear error.
+    public static func validateClientCertificate(for profile: ConnectionProfile, fileManager: FileManager = .default) throws {
+        if profile.authMethod == .clientCertificate {
+            guard let certPath = profile.certificatePath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !certPath.isEmpty else {
+                throw BridgeError.invalidCertificate("Select a client certificate (.pem or .p12) in Edit Connection before connecting.")
+            }
+            guard fileManager.isReadableFile(atPath: certPath) else {
+                throw BridgeError.invalidCertificate("Client certificate file is missing or unreadable: \(certPath)")
+            }
+        }
+        if let keyPath = profile.sslKeyPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !keyPath.isEmpty,
+           !fileManager.isReadableFile(atPath: keyPath) {
+            throw BridgeError.invalidCertificate("Private key file is missing or unreadable: \(keyPath)")
+        }
+    }
+
     // MARK: - Connect
 
     public func connect(profile rawProfile: ConnectionProfile, password: String?) async throws {
         guard !rawProfile.portal.isEmpty else { throw BridgeError.portalMissing }
         guard !currentState.isBusy, !currentState.isConnected else { throw BridgeError.alreadyBusy }
+        try Self.validateClientCertificate(for: rawProfile)
 
         let builder = try makeBuilder(profile: rawProfile)
         let profile = try withResolvedVpncScript(rawProfile)

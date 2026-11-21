@@ -199,7 +199,10 @@ detect_resolved_manager_old() {
 	detect_resolved_etc_files && /usr/bin/busctl status "$dest" >/dev/null 2>&1
 }
 
-if [ -r /etc/openwrt_release ] && [ -n "$OPENWRT_INTERFACE" ]; then
+if [ "$OS" = "Darwin" ]; then
+	MODIFYRESOLVCONF=configure_macos_dns
+	RESTORERESOLVCONF=remove_macos_dns
+elif [ -r /etc/openwrt_release ] && [ -n "$OPENWRT_INTERFACE" ]; then
 	. /etc/functions.sh
 	include /lib/network
 	MODIFYRESOLVCONF=modify_resolvconf_openwrt
@@ -627,6 +630,129 @@ else # use route command
 fi
 
 # =========== resolv.conf handling ====================================
+
+# =========== macOS resolver configuration =========================
+
+is_ipv4_default_route() {
+	[ "$1" = "0.0.0.0" ] && [ "$2" = "0" ]
+}
+
+macos_scutil_update() {
+	local output status
+	output=$(scutil 2>&1)
+	status=$?
+	# scutil can print a command error and still exit successfully. Updates
+	# produce no output on success; do not hide failures behind its exit status.
+	if [ "$status" -ne 0 ] || [ -n "$output" ]; then
+		printf 'macOS network configuration failed: %s\n' "$output" >&2
+		return 1
+	fi
+}
+
+macos_remove_state() {
+	local key output status
+	key="State:/Network/Service/$TUNDEV/$1"
+	output=$(printf 'get %s\nquit\n' "$key" | scutil 2>&1)
+	status=$?
+	if [ "$status" -eq 0 ] && [ "$output" = "  No such key" ]; then
+		return 0
+	fi
+	if [ "$status" -ne 0 ] || [ -n "$output" ]; then
+		printf 'Cannot inspect macOS network state: %s\n' "$output" >&2
+		return 1
+	fi
+	macos_scutil_update <<-EOF
+		remove $key
+		quit
+	EOF
+}
+
+macos_dns_source_service() {
+	local output source
+	output=$(printf 'show State:/Network/Global/IPv4\nquit\n' | scutil 2>&1) || {
+		printf 'macOS network configuration failed: cannot read primary IPv4 service: %s\n' "$output" >&2
+		return 1
+	}
+	source=$(printf '%s\n' "$output" | awk '$1 == "PrimaryService" && $2 == ":" { print $3 }')
+	if [ "$source" = "$TUNDEV" ]; then
+		# Our DNS service may now be primary. Re-read its original service on
+		# reconnect so DHCP changes are not copied from an outdated snapshot.
+		output=$(printf 'show State:/Network/Service/%s/IPv4\nquit\n' "$TUNDEV" | scutil 2>&1) || {
+			printf 'macOS network configuration failed: cannot read DNS source service: %s\n' "$output" >&2
+			return 1
+		}
+		source=$(printf '%s\n' "$output" | awk '$1 == "GPConnectSourceService" && $2 == ":" { print $3 }')
+	fi
+	if [ -z "$source" ] || [ "$source" = "$TUNDEV" ]; then
+		printf 'Cannot identify the primary macOS IPv4 service for VPN DNS\n' >&2
+		return 1
+	fi
+	printf '%s\n' "$source"
+}
+
+configure_macos_dns() {
+	local search_domains ipv4 default_route i network prefix
+	if [ -z "$INTERNAL_IP4_DNS" ]; then
+		remove_macos_dns
+		return $?
+	fi
+	search_domains=""
+	if [ -n "$CISCO_DEF_DOMAIN" ]; then
+		search_domains="d.add SearchDomains * $CISCO_DEF_DOMAIN"
+	fi
+	# Match do_connect: an include list can itself contain the default route.
+	default_route=1
+	if [ -n "$CISCO_SPLIT_INC" ]; then
+		default_route=0
+		i=0
+		while [ "$i" -lt "$CISCO_SPLIT_INC" ]; do
+			eval network="\${CISCO_SPLIT_INC_${i}_ADDR}"
+			eval prefix="\${CISCO_SPLIT_INC_${i}_MASKLEN}"
+			if is_ipv4_default_route "$network" "$prefix"; then
+				default_route=1
+				break
+			fi
+			i=$((i + 1))
+		done
+	fi
+	if [ "$default_route" -eq 0 ]; then
+		local source
+		source=$(macos_dns_source_service) || return 1
+		# A split tunnel has no default router. Like GlobalProtect, register
+		# a copy of the primary service so DNS can become primary without
+		# moving ordinary internet traffic onto the tunnel interface.
+		ipv4="get State:/Network/Service/$source/IPv4
+d.add GPConnectSourceService $source"
+	else
+		ipv4="d.init
+d.add Addresses * $INTERNAL_IP4_ADDRESS
+d.add SubnetMasks * 255.255.255.255
+d.add InterfaceName $TUNDEV
+d.add Router $INTERNAL_IP4_ADDRESS"
+	fi
+	# Publish a default resolver owned by this tunnel. Search suffixes do not
+	# imply supplemental DNS matching, and physical-service DNS stays intact.
+	macos_scutil_update <<-EOF
+		$ipv4
+		d.add OverridePrimary # 1
+		set State:/Network/Service/$TUNDEV/IPv4
+		d.init
+		d.add ServerAddresses * $INTERNAL_IP4_DNS
+		$search_domains
+		d.add SearchOrder # 50000
+		set State:/Network/Service/$TUNDEV/DNS
+		quit
+	EOF
+}
+
+remove_macos_dns() {
+	local status=0
+	macos_remove_state DNS || status=1
+	macos_remove_state IPv4 || status=1
+	dscacheutil -flushcache 2>/dev/null || true
+	killall -HUP mDNSResponder 2>/dev/null || true
+	return "$status"
+}
 
 # =========== resolv.conf handling for any OS =========================
 

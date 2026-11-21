@@ -163,6 +163,37 @@ final class GpclientCommandBuilderTests: XCTestCase {
         let cmd = CommandLine(executable: "/bin/x", arguments: ["a b", "c"])
         XCTAssertEqual(cmd.displayString, "/bin/x 'a b' c")
     }
+
+    func testNormalizeServerPreservesCustomPortsAndStripsURLWrapper() {
+        XCTAssertEqual(GpclientCommandBuilder.normalizeServer("https://vpn.example.edu:8443/global-protect/login.esp"), "vpn.example.edu:8443")
+        XCTAssertEqual(GpclientCommandBuilder.normalizeServer("https://vpn.example.edu/"), "vpn.example.edu")
+        XCTAssertEqual(GpclientCommandBuilder.normalizeServer("  vpn.example.edu:4443/path  "), "vpn.example.edu:4443")
+        XCTAssertEqual(GpclientCommandBuilder.normalizeServer("https://[2001:db8::1]:8443/login"), "[2001:db8::1]:8443")
+
+        let profile = ConnectionProfile(
+            portal: "https://vpn.example.edu:8443/global-protect/login.esp",
+            selectedGatewayServer: "https://gw.example.edu:4443/",
+            authMethod: .browserSSO
+        )
+        let authCmd = builder.browserAuthCommand(profile: profile)
+        XCTAssertTrue(authCmd.arguments.contains("vpn.example.edu:8443"))
+        let tunCmd = builder.tunnelCommand(profile: profile, password: nil, authResult: "{}")
+        XCTAssertTrue(tunCmd.arguments.contains(["connect", "vpn.example.edu:8443"]))
+        XCTAssertTrue(tunCmd.arguments.contains(["--gateway", "gw.example.edu:4443"]))
+    }
+
+    func testClientCertificateValidationRejectsMissingFiles() {
+        let missingCert = ConnectionProfile(portal: "vpn.example.com", authMethod: .clientCertificate)
+        XCTAssertThrowsError(try GpclientBridgeService.validateClientCertificate(for: missingCert)) { error in
+            guard case BridgeError.invalidCertificate = error else { return XCTFail("unexpected \(error)") }
+        }
+
+        var unreadableCert = ConnectionProfile(portal: "vpn.example.com", authMethod: .clientCertificate)
+        unreadableCert.certificatePath = "/nonexistent/overland-test-cert.p12"
+        XCTAssertThrowsError(try GpclientBridgeService.validateClientCertificate(for: unreadableCert)) { error in
+            guard case BridgeError.invalidCertificate = error else { return XCTFail("unexpected \(error)") }
+        }
+    }
 }
 
 private extension Array where Element == String {

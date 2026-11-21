@@ -79,6 +79,27 @@ public struct GpclientCommandBuilder: Sendable {
         "--reconnect-timeout": 1
     ]
 
+    /// Normalizes a portal or gateway address pasted by the user (e.g.
+    /// `https://vpn.example.edu:8443/global-protect/login.esp` → `vpn.example.edu:8443`),
+    /// stripping scheme and path while preserving any explicit `:port`.
+    public static func normalizeServer(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        if trimmed.contains("://"), let components = URLComponents(string: trimmed), let host = components.host, !host.isEmpty {
+            let formattedHost = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+            if let port = components.port {
+                return "\(formattedHost):\(port)"
+            }
+            return formattedHost
+        }
+
+        if let slash = trimmed.firstIndex(of: "/") {
+            return String(trimmed[..<slash])
+        }
+        return trimmed
+    }
+
     /// Whether the profile needs the unprivileged browser step.
     public static func needsBrowserAuth(_ profile: ConnectionProfile) -> Bool {
         profile.authMethod == .browserSSO
@@ -107,7 +128,7 @@ public struct GpclientCommandBuilder: Sendable {
             return ["--as-gateway"]
         }
         if let gateway = profile.selectedGatewayServer, !gateway.isEmpty {
-            return ["--gateway", gateway]
+            return ["--gateway", Self.normalizeServer(gateway)]
         }
         // Without a TTY gpclient cannot show its interactive gateway picker.
         return ["--auto-gateway"]
@@ -148,7 +169,7 @@ public struct GpclientCommandBuilder: Sendable {
     /// `SamlAuthResult` JSON that gpclient's `--cookie-on-stdin` consumes.
     public func browserAuthCommand(profile: ConnectionProfile) -> CommandLine {
         var args = globalFlags(for: profile)
-        args.append(profile.portal)
+        args.append(Self.normalizeServer(profile.portal))
         if profile.asGateway {
             args.append("--gateway")
         }
@@ -164,7 +185,7 @@ public struct GpclientCommandBuilder: Sendable {
     /// `authResult` is the gpauth JSON for SSO profiles, nil otherwise.
     public func discoveryCommand(profile: ConnectionProfile, password: String?, authResult: String?) -> CommandLine {
         var args = globalFlags(for: profile)
-        args += ["connect", profile.portal, "--cookie-only", "--auto-gateway"]
+        args += ["connect", Self.normalizeServer(profile.portal), "--cookie-only", "--auto-gateway"]
         var stdin: String? = nil
         if let authResult {
             args.append("--cookie-on-stdin")
@@ -185,7 +206,7 @@ public struct GpclientCommandBuilder: Sendable {
     /// The result is *not* yet wrapped for privilege escalation — see `escalate`.
     public func tunnelCommand(profile: ConnectionProfile, password: String?, authResult: String?, hipScriptPath: String? = nil) -> CommandLine {
         var args = globalFlags(for: profile)
-        args += ["connect", profile.portal]
+        args += ["connect", Self.normalizeServer(profile.portal)]
         args += gatewaySelectionFlags(for: profile)
 
         var stdin: String? = nil
