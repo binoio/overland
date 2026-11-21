@@ -3,6 +3,28 @@
     <channel>
         <title>Overland</title>
         <item>
+            <title>1.0.9</title>
+            <pubDate>Sat, 21 Nov 2026 11:44:01 -0500</pubDate>
+            <sparkle:version>1.0.9</sparkle:version>
+            <sparkle:shortVersionString>1.0.9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<h2>Overland 1.0.9</h2>
+<p>Incorporates key upstream GlobalProtect-openconnect fixes for macOS DNS &amp; split-tunnel handling, log redaction, URL/port parsing, client certificate validation, and native macOS HIP host info.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Ephemeral macOS DNS &amp; Split-Tunnel Support:</strong> Adopted upstream's <code>scutil</code>-only macOS DNS resolver configuration (<code>OverridePrimary</code> + <code>SearchOrder</code> + split-tunnel source tracking) and removed persistent <code>networksetup -setdnsservers</code> writes so physical Wi-Fi/Ethernet DNS settings are never left modified across crashes or reboots.</li>
+  <li><strong>Faster Disconnect on Unresponsive Gateways:</strong> Reduced the disconnect grace timeout before escalating to forced teardown when a gateway stops responding to logout.</li>
+  <li><strong>Security &amp; Log Hygiene:</strong> Redacted sensitive cookies, passwords, SAML payloads, and <code>globalprotectcallback:</code> tokens from Activity Logs, and enforced server certificate pins in OpenConnect's peer validation callback.</li>
+  <li><strong>Custom Port &amp; URL Normalization:</strong> Pasting full portal or gateway URLs (including explicit <code>:port</code> and IPv6 <code>[host]:port</code>) now strips schemes/paths while preserving custom ports.</li>
+  <li><strong>Client Certificate Validation &amp; macOS HIP Info:</strong> Added pre-connect checks for missing or unreadable client certificate/key files, and updated HIP posture reporting to detect real macOS version (<code>sw_vers</code>) and built-in Wi-Fi MAC (<code>networksetup</code>) as the host ID.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>
+]]></description>
+            <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.9/Overland-1.0.9.zip" length="15071953" type="application/octet-stream" sparkle:edSignature="KT4ngFMflgtvNKzdik3TtThE7HROUyi+3B/s3VEiRymbJOUXVhmXuTQuNE5fGOIJLoDHLEM/OquQeFKB5sGvCA=="/>
+        </item>
+        <item>
             <title>1.0.8</title>
             <pubDate>Sat, 21 Nov 2026 11:03:18 -0500</pubDate>
             <sparkle:version>1.0.8</sparkle:version>
@@ -41,26 +63,6 @@
 <p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>
 ]]></description>
             <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.7/Overland-1.0.7.zip" length="15059783" type="application/octet-stream" sparkle:edSignature="OZ4qCf6dkTeX5JKYckXYMQoZ+sxK3YSDpIEm6rtX8J/17avVUrn8iLvUGgLXoKqoNvGN7KKkbvhpgVkVu8ckDw=="/>
-        </item>
-        <item>
-            <title>1.0.6</title>
-            <pubDate>Sat, 21 Nov 2026 10:38:17 -0500</pubDate>
-            <sparkle:version>1.0.6</sparkle:version>
-            <sparkle:shortVersionString>1.0.6</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<h2>Overland 1.0.6</h2>
-<p>Complete macOS network settings reset, sleep/wake tunnel resilience, and disconnect reliability improvements.</p>
-<h3>Highlights</h3>
-<ul>
-  <li><strong>Reset Network Settings:</strong> Added a one-click <strong>Reset Network Settings…</strong> action (available in <strong>Settings ▸ Network ▸ Troubleshooting</strong>, the menu bar, the app menu, and as <strong>Force Reset Network…</strong> while disconnecting). It stops any lingering VPN processes, removes stale <code>scutil</code> Dynamic Store entries and <code>utun</code> default routes, resets persistent DNS and search-domain overrides to automatic (DHCP), flushes macOS DNS caches, and refreshes active interfaces so macOS restores default routing, DNS, and Wi-Fi reachability.</li>
-  <li><strong>Disconnect &amp; Sleep/Wake Resilience:</strong> Escalated forced tunnel termination to <code>SIGKILL</code> when <code>gpclient</code> becomes unresponsive after waking from sleep, guaranteed UI state recovery out of disconnecting, and added wake-from-sleep tunnel health checks.</li>
-  <li><strong>Cleaner Disconnect DNS Flush:</strong> Flushed macOS DNS caches (<code>dscacheutil</code> / <code>mDNSResponder</code>) during standard <code>vpnc-script</code> teardown so local DNS resumes immediately.</li>
-</ul>
-<h3>Requirements</h3>
-<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>
-]]></description>
-            <enclosure url="https://github.com/binoio/overland/releases/download/overland-v1.0.6/Overland-1.0.6.zip" length="15046221" type="application/octet-stream" sparkle:edSignature="kV7EbnxCUUz/5TrQSbjUh2+b3ZIO3UE2N1w6lJKDLWhAPpHavTPVmLe3A5WalE5eDr+AHGBHs5nAcP4k2w8qAw=="/>
         </item>
     </channel>
 </rss>
