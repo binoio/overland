@@ -176,26 +176,6 @@ public final class HelperManager: ObservableObject {
         refresh()
     }
 
-    /// Re-register the daemon from the currently running app bundle so launchd
-    /// replaces any stale helper process left over from a prior version (e.g.
-    /// after an in-place Sparkle update).
-    @discardableResult
-    public func reinstall() async -> Bool {
-        lastError = nil
-        try? await service.unregister()
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        do {
-            try service.register()
-        } catch {
-            refresh()
-            if status == .notRegistered || status == .notFound || status == .requiresMoveToApplications {
-                lastError = error.localizedDescription
-            }
-        }
-        refresh()
-        return status == .enabled
-    }
-
     public func openSystemSettings() {
         SMAppService.openSystemSettingsLoginItems()
     }

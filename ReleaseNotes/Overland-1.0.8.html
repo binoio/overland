@@ -1,0 +1,10 @@
+<h2>Overland 1.0.8</h2>
+<p>Fixes repeated administrator password prompts by preserving <code>SMAppService</code> helper approval across Sparkle updates.</p>
+<h3>Highlights</h3>
+<ul>
+  <li><strong>Seamless Helper Reload on Update:</strong> <code>OverlandHelper</code> now detects when its binary on disk has been replaced by an in-place Sparkle update and exits cleanly while idle so <code>launchd</code> spawns the updated helper automatically—without ever calling <code>SMAppService.unregister()</code> or revoking Login Items approval.</li>
+  <li><strong>No More Unexpected Password Prompts:</strong> Removed automatic helper unregistration on launch/connect so existing System Settings approvals stay intact across updates.</li>
+  <li><strong>Helper Approval Banner:</strong> Added a clear banner on the main Connection view with one-click <strong>Open System Settings…</strong> and <strong>Re-check</strong> buttons whenever Login Items approval is needed.</li>
+</ul>
+<h3>Requirements</h3>
+<p>macOS 14 or later. Run Overland from <code>/Applications</code> or <code>~/Applications</code> for seamless privileged helper registration.</p>

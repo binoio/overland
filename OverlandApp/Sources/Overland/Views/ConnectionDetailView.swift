@@ -3,11 +3,21 @@ import SwiftUI
 
 public struct ConnectionDetailView: View {
     @ObservedObject var viewModel: VpnViewModel
+    @ObservedObject private var helper: HelperManager
     @Environment(\.openWindow) private var openWindow
+
+    public init(viewModel: VpnViewModel) {
+        self.viewModel = viewModel
+        self.helper = viewModel.helperManager
+    }
 
     public var body: some View {
         ScrollView {
             VStack(spacing: 20) {
+                if viewModel.profile.privilegeMode == .helper, helper.status == .requiresApproval {
+                    helperApprovalBanner
+                }
+
                 switch viewModel.state {
                 case .connected(let details):
                     connectedHeader(details)
@@ -39,6 +49,7 @@ public struct ConnectionDetailView: View {
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .onAppear { helper.refresh() }
     }
 
     // MARK: Idle (same structure as Connected, unpopulated)
@@ -328,6 +339,30 @@ public struct ConnectionDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(Color.blue.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var helperApprovalBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.shield")
+                .font(.title3)
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Privileged helper needs approval")
+                    .font(.headline)
+                Text("Allow Overland in System Settings ▸ Login Items & Extensions so connecting doesn’t ask for an administrator password.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Open System Settings…") { helper.openSystemSettings() }
+                .controlSize(.small)
+            Button("Re-check") { helper.refresh() }
+                .controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(Color.orange.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

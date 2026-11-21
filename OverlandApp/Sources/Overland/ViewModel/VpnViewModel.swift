@@ -124,7 +124,6 @@ public final class VpnViewModel: ObservableObject {
     private let customBinaryKey = "Overland.CustomBinaryPath"
     private let menuBarOnlyKey = "Overland.MenuBarOnly"
     private let setupDoneKey = "Overland.SetupCompleted"
-    private let helperVersionKey = "Overland.HelperRegisteredAppVersion"
     private var hasHandledLaunch = false
     private var lastCounters: InterfaceStatsReader.Counters?
     private var lastSampleAt: Date?
@@ -384,30 +383,24 @@ public final class VpnViewModel: ObservableObject {
 
         let profile = self.profile
         let password = self.password.isEmpty ? nil : self.password
+        helperManager.refresh()
         Task {
             do {
                 try await self.bridge.connect(profile: profile, password: password)
             } catch HelperClientError.protocolMismatch {
-                self.appendLog(LogEntry(level: .info, message: "Privileged helper version mismatch; updating helper and retrying…"))
-                if await self.helperManager.reinstall() {
-                    self.storage.defaults.set(Self.currentBundleVersion(), forKey: self.helperVersionKey)
-                    do {
-                        try await self.bridge.connect(profile: profile, password: password)
-                        return
-                    } catch {
-                        self.statusMessage = error.localizedDescription
-                        self.appendLog(LogEntry(level: .error, message: "Connection error: \(error.localizedDescription)"))
-                        if !self.state.isConnected {
-                            self.updateState(.failed(message: error.localizedDescription))
-                        }
-                        return
+                // After an in-place update the old helper exits within 2s on
+                // seeing its binary replaced on disk; wait briefly and retry
+                // without unregistering SMAppService (which would revoke approval).
+                self.appendLog(LogEntry(level: .info, message: "Waiting for privileged helper to reload after update…"))
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                do {
+                    try await self.bridge.connect(profile: profile, password: password)
+                } catch {
+                    self.statusMessage = error.localizedDescription
+                    self.appendLog(LogEntry(level: .error, message: "Connection error: \(error.localizedDescription)"))
+                    if !self.state.isConnected {
+                        self.updateState(.failed(message: error.localizedDescription))
                     }
-                }
-                let msg = "The privileged helper needs approval in System Settings ▸ Login Items & Extensions."
-                self.statusMessage = msg
-                self.appendLog(LogEntry(level: .error, message: msg))
-                if !self.state.isConnected {
-                    self.updateState(.failed(message: msg))
                 }
             } catch {
                 self.statusMessage = error.localizedDescription
@@ -506,56 +499,18 @@ public final class VpnViewModel: ObservableObject {
         }
     }
 
-    /// Called once the UI is up: updates any stale privileged helper after an
-    /// app update, re-attaches to a tunnel a previous process left running, and
-    /// otherwise honors the profile's auto-connect flag.
+    /// Called once the UI is up: re-attaches to a tunnel a previous process
+    /// left running, otherwise honors the profile's auto-connect flag.
     public func handleLaunch() {
         guard !hasHandledLaunch else { return }
         hasHandledLaunch = true
         helperManager.refresh()
         Task {
             let adopted = await self.bridge.adoptOrphanedSession()
-            if !adopted {
-                await self.reconcileHelperIfNeeded()
-                if self.profile.autoConnect, !self.profile.portal.isEmpty, self.state.isDisconnected {
-                    self.connect()
-                }
+            if !adopted, self.profile.autoConnect, !self.profile.portal.isEmpty, self.state.isDisconnected {
+                self.connect()
             }
         }
-    }
-
-    /// Ensures the registered privileged helper matches this app bundle's
-    /// version and XPC protocol (e.g. after an in-place Sparkle update).
-    public func reconcileHelperIfNeeded() async {
-        helperManager.refresh()
-        guard helperManager.isUsable else { return }
-
-        let currentVersion = Self.currentBundleVersion()
-        let recordedVersion = storage.defaults.string(forKey: helperVersionKey)
-
-        var protocolMatches = false
-        let probe = HelperProcessRunner()
-        if let v = try? await probe.helperProtocolVersion() {
-            protocolMatches = (v == overlandHelperProtocolVersion)
-        }
-        await probe.close()
-
-        guard !protocolMatches || recordedVersion != currentVersion else { return }
-
-        appendLog(LogEntry(level: .info, message: "Updating privileged helper for Overland \(currentVersion)…"))
-        let ok = await helperManager.reinstall()
-        if ok {
-            storage.defaults.set(currentVersion, forKey: helperVersionKey)
-            appendLog(LogEntry(level: .info, message: "Privileged helper updated to protocol \(overlandHelperProtocolVersion)."))
-        } else {
-            appendLog(LogEntry(level: .warn, message: "Privileged helper update requires attention: \(helperManager.status.title)"))
-        }
-    }
-
-    private static func currentBundleVersion() -> String {
-        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? short
-        return "\(short) (\(build))"
     }
 
     /// Whether quitting now would leave a tunnel behind.

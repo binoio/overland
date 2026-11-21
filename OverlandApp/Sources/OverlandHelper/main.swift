@@ -7,6 +7,7 @@
 // gpclient sealed in its own bundle — see HelperRequestValidator and
 // CodeSignature.
 import Foundation
+import Darwin
 import os
 import OverlandCore
 import OverlandHelperShared
@@ -17,13 +18,26 @@ final class Daemon: @unchecked Sendable {
     static let appBundleID = "io.bino.overland"
     static let idleExitAfter: TimeInterval = 60
 
+    struct BinaryIdentity: Equatable {
+        let inode: UInt64
+        let modifiedSeconds: Int
+    }
+
     let logger = Logger(subsystem: "io.bino.overland", category: "helper")
     let bundleURL: URL
+    let helperPath: String
+    let startupIdentity: BinaryIdentity?
     let gpclientPath: String
     let vpncScriptPath: String
     let teamID: String
     let clientRequirement: SecRequirement
     let binaryRequirement: SecRequirement
+
+    private static func binaryIdentity(at path: String) -> BinaryIdentity? {
+        var st = stat()
+        guard stat(path, &st) == 0 else { return nil }
+        return BinaryIdentity(inode: st.st_ino, modifiedSeconds: st.st_mtimespec.tv_sec)
+    }
 
     init() throws {
         // The helper lives at <App>.app/Contents/MacOS/OverlandHelper. launchd
@@ -32,12 +46,21 @@ final class Daemon: @unchecked Sendable {
         let helperURL = (Bundle.main.executableURL ?? URL(fileURLWithPath: Swift.CommandLine.arguments[0])).standardizedFileURL
         let macOSDir = helperURL.deletingLastPathComponent()
         bundleURL = macOSDir.deletingLastPathComponent().deletingLastPathComponent()
+        helperPath = helperURL.path
+        startupIdentity = Self.binaryIdentity(at: helperPath)
         gpclientPath = macOSDir.appendingPathComponent("gpclient").path
         vpncScriptPath = bundleURL.appendingPathComponent("Contents/Resources/vpnc-script").path
 
         teamID = try CodeSignature.selfTeamIdentifier()
         clientRequirement = try CodeSignature.clientRequirement(teamID: teamID, bundleID: Self.appBundleID)
         binaryRequirement = try CodeSignature.teamRequirement(teamID: teamID)
+    }
+
+    private func binaryUpdatedOnDisk() -> Bool {
+        guard let startupIdentity, let current = Self.binaryIdentity(at: helperPath) else {
+            return false
+        }
+        return current != startupIdentity
     }
 
     func run() -> Never {
@@ -62,10 +85,17 @@ final class Daemon: @unchecked Sendable {
         listener.delegate = delegate
         listener.resume()
 
-        // Idle exit: launchd relaunches us on the next connection.
-        let timer = Timer(timeInterval: 15, repeats: true) { [logger] _ in
-            if !manager.isRunning, delegate.openConnections == 0, delegate.idleSeconds > Self.idleExitAfter {
-                logger.info("idle; exiting")
+        // Idle exit & self-update reload: if Sparkle replaced Overland.app on
+        // disk while no tunnel is active, exit promptly so launchd spawns the
+        // new helper binary without touching SMAppService approval.
+        let timer = Timer(timeInterval: 2, repeats: true) { [self] _ in
+            guard !manager.isRunning else { return }
+            if self.binaryUpdatedOnDisk() {
+                self.logger.info("helper binary updated on disk; exiting so launchd spawns the new version")
+                exit(0)
+            }
+            if delegate.openConnections == 0, delegate.idleSeconds > Self.idleExitAfter {
+                self.logger.info("idle; exiting")
                 exit(0)
             }
         }
